@@ -481,8 +481,24 @@ els.resetBtn.addEventListener('click', () => {
 loadState();
 renderAll();
 
+// v9：取消 Service Worker 離線快取，避免手機長時間停留在舊版本。
+// GitHub Pages 本身即可讓電腦關機後仍從手機連線使用。
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  window.addEventListener('load', async () => {
+    try {
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (registration) await registration.unregister();
+    } catch (_) {}
+
+    if ('caches' in window) {
+      try {
+        const keys = await caches.keys();
+        await Promise.all(
+          keys
+            .filter(key => key.startsWith('service-approval-mobile-'))
+            .map(key => caches.delete(key))
+        );
+      } catch (_) {}
+    }
   });
 }
