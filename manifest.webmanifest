@@ -1,0 +1,18 @@
+{
+  "name": "服務項目核定單",
+  "short_name": "核定單",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f4f7f6",
+  "theme_color": "#0f766e",
+  "lang": "zh-Hant",
+  "description": "長照服務項目核定單行動版",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
