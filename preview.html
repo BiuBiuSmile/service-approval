@@ -8,7 +8,7 @@
   <title>服務項目核定單</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=10" />
 </head>
 <body>
   <div class="app-shell">
@@ -143,7 +143,7 @@ localStorage.setItem('serviceApprovalMobile-v1', JSON.stringify({
   items: [{code:'BA02', qty:20, weeklyQty:5, days:['mon','tue','wed','thu','fri']}]
 }));
 </script>
-<script src="app.js"></script><script>
+<script src="app.js?v=10"></script><script>
 window.addEventListener('load', () => {
   const input = document.querySelector('#serviceSearch');
   input.value = 'BA02';

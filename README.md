@@ -91,3 +91,10 @@
 - 開啟網站時會解除本專案舊 Service Worker，並刪除 `service-approval-mobile-*` 快取。
 - CSS / JS 加入版本參數，更新 GitHub Pages 後較容易立即取得新版。
 - 若手機目前仍被 v8 控制，可先用網址尾端加 `?v=9` 開啟一次，例如：`https://你的帳號.github.io/service-approval/?v=9`。
+
+
+## v10 手機連點優化
+
+- 使用 `touch-action: manipulation` 關閉手機瀏覽器「快速點兩下放大」手勢。
+- 一般單指捲動與雙指縮放仍保留，不會把整個網頁鎖死。
+- CSS / JS 資源版本更新為 v10，降低手機讀到舊檔的機率。
