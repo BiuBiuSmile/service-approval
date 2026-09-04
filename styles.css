@@ -518,3 +518,36 @@ main { padding: 14px; }
   font-size: 11px;
   font-weight: 700;
 }
+
+
+/* v11：手機觸控即時化。按下瞬間先給回饋，實際選取在 pointerup 完成，避免滑動時誤觸。 */
+.service-main,
+.weekday-chip,
+.filter-chip,
+.remove-button,
+.ghost-button,
+.text-button {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.service-main.touch-pressed {
+  background: #eef8f6;
+}
+
+.weekday-chip.touch-pressed,
+.filter-chip.touch-pressed,
+.remove-button.touch-pressed,
+.ghost-button.touch-pressed,
+.text-button.touch-pressed {
+  transform: scale(.97);
+}
+
+.service-main,
+.weekday-chip,
+.filter-chip,
+.remove-button,
+.ghost-button,
+.text-button {
+  -webkit-tap-highlight-color: transparent;
+}

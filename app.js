@@ -145,6 +145,163 @@ function renderBasic() {
   els.copayLabel.textContent = identity.label;
 }
 
+function bindFastTap(element, handler) {
+  let pointerId = null;
+  let startX = 0;
+  let startY = 0;
+  let moved = false;
+  let suppressClickUntil = 0;
+  const MOVE_LIMIT = 10;
+
+  const clearPress = () => {
+    element.classList.remove('touch-pressed');
+    pointerId = null;
+    moved = false;
+  };
+
+  element.addEventListener('pointerdown', event => {
+    if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+    pointerId = event.pointerId;
+    startX = event.clientX;
+    startY = event.clientY;
+    moved = false;
+    element.classList.add('touch-pressed');
+  });
+
+  element.addEventListener('pointermove', event => {
+    if (event.pointerId !== pointerId) return;
+    if (Math.hypot(event.clientX - startX, event.clientY - startY) > MOVE_LIMIT) {
+      moved = true;
+      element.classList.remove('touch-pressed');
+    }
+  });
+
+  element.addEventListener('pointercancel', event => {
+    if (event.pointerId === pointerId) clearPress();
+  });
+
+  element.addEventListener('pointerup', event => {
+    if (event.pointerId !== pointerId) return;
+    const shouldActivate = !moved;
+    clearPress();
+
+    if (shouldActivate) {
+      // 直接在觸控放開時執行，不等待瀏覽器後續合成 click。
+      suppressClickUntil = performance.now() + 700;
+      handler(event);
+    }
+  });
+
+  element.addEventListener('click', event => {
+    // 觸控 pointerup 後通常還會補送 click；這裡避免重複執行。
+    if (performance.now() < suppressClickUntil) {
+      event.preventDefault();
+      return;
+    }
+    handler(event);
+  });
+}
+
+let derivedRenderFrame = 0;
+function scheduleDerivedRender() {
+  if (derivedRenderFrame) cancelAnimationFrame(derivedRenderFrame);
+  derivedRenderFrame = requestAnimationFrame(() => {
+    derivedRenderFrame = 0;
+    renderApproved();
+    renderTotals();
+  });
+}
+
+function createWeeklyEditor(service, selectedItem) {
+  const weeklyEditor = document.createElement('div');
+  weeklyEditor.className = 'weekly-editor';
+  weeklyEditor.innerHTML = `
+    <div class="weekly-row">
+      <span class="weekly-label">一週次數</span>
+      <div class="weekly-control">
+        <input
+          class="weekly-input"
+          type="number"
+          inputmode="numeric"
+          min="0"
+          step="1"
+          value="${selectedItem.weeklyQty ?? 0}"
+          aria-label="${service.code} 一週服務次數"
+        />
+        <span>次</span>
+      </div>
+    </div>
+    <div class="weekly-hint">選星期會自動帶入次數，仍可手動修改</div>
+    <div class="monthly-estimate" aria-live="polite">
+      預估每月 <strong>${estimateMonthlyQty(selectedItem.weeklyQty ?? 0)}</strong> 單位
+      <span>（每週次數 × 約 4.5 週（大月））</span>
+    </div>
+    <div class="weekday-editor">
+      <span class="weekday-label">服務星期</span>
+      <div class="weekday-chips" role="group" aria-label="${service.code} 服務星期">
+        ${WEEKDAYS.map(day => `
+          <button
+            type="button"
+            class="weekday-chip${(selectedItem.days || []).includes(day.key) ? ' active' : ''}"
+            data-day="${day.key}"
+            aria-pressed="${(selectedItem.days || []).includes(day.key)}"
+            title="${day.label}"
+          >${day.short}</button>
+        `).join('')}
+      </div>
+    </div>
+  `;
+
+  const weeklyInput = weeklyEditor.querySelector('.weekly-input');
+  weeklyInput.addEventListener('click', event => event.stopPropagation());
+  weeklyInput.addEventListener('input', event => updateWeeklyQty(service.code, event.target.value));
+  weeklyInput.addEventListener('change', event => updateWeeklyQty(service.code, event.target.value));
+
+  weeklyEditor.querySelectorAll('.weekday-chip').forEach(dayButton => {
+    bindFastTap(dayButton, event => {
+      event.stopPropagation();
+      const selected = toggleWeekday(service.code, dayButton.dataset.day);
+      dayButton.classList.toggle('active', selected);
+      dayButton.setAttribute('aria-pressed', String(selected));
+    });
+  });
+
+  return weeklyEditor;
+}
+
+function applyServiceCardState(card, service) {
+  const button = card.querySelector('.service-main');
+  const mark = card.querySelector('.add-mark');
+  const selectedItem = state.items.find(item => item.code === service.code);
+  card.querySelector('.weekly-editor')?.remove();
+
+  button.setAttribute('aria-pressed', selectedItem ? 'true' : 'false');
+
+  if (selectedItem) {
+    card.dataset.selected = 'true';
+    mark.textContent = '✓';
+    mark.setAttribute('aria-label', '已加入，點一下可取消');
+    button.title = '點一下取消此服務';
+    card.appendChild(createWeeklyEditor(service, selectedItem));
+  } else {
+    card.removeAttribute('data-selected');
+    mark.textContent = '＋';
+    mark.setAttribute('aria-label', '加入此服務');
+    button.title = '點一下加入此服務';
+  }
+}
+
+function findVisibleServiceCard(code) {
+  return Array.from(els.serviceList.querySelectorAll('.service-card'))
+    .find(card => card.dataset.code === code);
+}
+
+function syncVisibleServiceCard(code) {
+  const card = findVisibleServiceCard(code);
+  const service = getService(code);
+  if (card && service) applyServiceCardState(card, service);
+}
+
 function renderServices() {
   const normalizedQuery = state.query.trim().toLowerCase();
   const visible = SERVICES.filter(service => {
@@ -160,82 +317,17 @@ function renderServices() {
     return;
   }
 
-  const selectedCodes = new Set(state.items.map(item => item.code));
-
   visible.forEach(service => {
     const fragment = els.template.content.cloneNode(true);
     const card = fragment.querySelector('.service-card');
     const button = fragment.querySelector('.service-main');
+    card.dataset.code = service.code;
     fragment.querySelector('.service-code').textContent = service.code;
     fragment.querySelector('.service-name').textContent = service.name;
     fragment.querySelector('.service-price').textContent = `單價 ${money.format(service.price)} 元｜一般 ${money.format(service.generalCopay)}｜中低 ${money.format(service.middleLowCopay)}`;
-    const mark = fragment.querySelector('.add-mark');
-    const selectedItem = state.items.find(item => item.code === service.code);
-    button.setAttribute('aria-pressed', selectedItem ? 'true' : 'false');
 
-    if (selectedCodes.has(service.code) && selectedItem) {
-      card.dataset.selected = 'true';
-      mark.textContent = '✓';
-      mark.setAttribute('aria-label', '已加入，點一下可取消');
-      button.title = '點一下取消此服務';
-
-      const weeklyEditor = document.createElement('div');
-      weeklyEditor.className = 'weekly-editor';
-      weeklyEditor.innerHTML = `
-        <div class="weekly-row">
-          <span class="weekly-label">一週次數</span>
-          <div class="weekly-control">
-            <input
-              class="weekly-input"
-              type="number"
-              inputmode="numeric"
-              min="0"
-              step="1"
-              value="${selectedItem.weeklyQty ?? 0}"
-              aria-label="${service.code} 一週服務次數"
-            />
-            <span>次</span>
-          </div>
-        </div>
-        <div class="weekly-hint">選星期會自動帶入次數，仍可手動修改</div>
-        <div class="monthly-estimate" aria-live="polite">
-          預估每月 <strong>${estimateMonthlyQty(selectedItem.weeklyQty ?? 0)}</strong> 單位
-          <span>（每週次數 × 約 4.5 週（大月））</span>
-        </div>
-        <div class="weekday-editor">
-          <span class="weekday-label">服務星期</span>
-          <div class="weekday-chips" role="group" aria-label="${service.code} 服務星期">
-            ${WEEKDAYS.map(day => `
-              <button
-                type="button"
-                class="weekday-chip${(selectedItem.days || []).includes(day.key) ? ' active' : ''}"
-                data-day="${day.key}"
-                aria-pressed="${(selectedItem.days || []).includes(day.key)}"
-                title="${day.label}"
-              >${day.short}</button>
-            `).join('')}
-          </div>
-        </div>
-      `;
-
-      const weeklyInput = weeklyEditor.querySelector('.weekly-input');
-      weeklyInput.addEventListener('click', event => event.stopPropagation());
-      weeklyInput.addEventListener('input', event => updateWeeklyQty(service.code, event.target.value));
-      weeklyInput.addEventListener('change', event => updateWeeklyQty(service.code, event.target.value));
-
-      weeklyEditor.querySelectorAll('.weekday-chip').forEach(dayButton => {
-        dayButton.addEventListener('click', event => {
-          event.stopPropagation();
-          const selected = toggleWeekday(service.code, dayButton.dataset.day);
-          dayButton.classList.toggle('active', selected);
-          dayButton.setAttribute('aria-pressed', String(selected));
-        });
-      });
-
-      card.appendChild(weeklyEditor);
-    }
-
-    button.addEventListener('click', () => toggleService(service.code));
+    bindFastTap(button, () => toggleService(service.code));
+    applyServiceCardState(card, service);
     els.serviceList.appendChild(fragment);
   });
 }
@@ -243,7 +335,6 @@ function renderServices() {
 function toggleService(code) {
   const existing = state.items.find(item => item.code === code);
   if (existing) {
-    // 已選取的服務再次點擊（包含右側勾勾）時，直接取消並縮回卡片。
     removeService(code);
     return;
   }
@@ -251,12 +342,14 @@ function toggleService(code) {
 }
 
 function addService(code) {
-  const existing = state.items.find(item => item.code === code);
-  if (!existing) {
-    state.items.push({ code, qty: 0, weeklyQty: 0, days: [] });
-    saveState();
-    renderAll();
-  }
+  if (state.items.some(item => item.code === code)) return;
+
+  state.items.push({ code, qty: 0, weeklyQty: 0, days: [] });
+  saveState();
+
+  // v11：只更新剛剛點選的服務卡，不再重畫整個服務清單。
+  syncVisibleServiceCard(code);
+  scheduleDerivedRender();
 
   // 保留使用者目前瀏覽位置，不自動捲動或搶焦點，方便繼續選其他服務。
 }
@@ -264,7 +357,10 @@ function addService(code) {
 function removeService(code) {
   state.items = state.items.filter(item => item.code !== code);
   saveState();
-  renderAll();
+
+  // v11：取消選取也只縮回目前卡片，減少手機端重排與延遲感。
+  syncVisibleServiceCard(code);
+  scheduleDerivedRender();
 }
 
 function updateQty(code, value) {
@@ -290,8 +386,7 @@ function updateWeeklyQty(code, value) {
   const estimate = input?.closest('.weekly-editor')?.querySelector('.monthly-estimate strong');
   if (estimate) estimate.textContent = String(item.qty);
 
-  renderApproved();
-  renderTotals();
+  scheduleDerivedRender();
 }
 
 function toggleWeekday(code, dayKey) {
@@ -324,8 +419,7 @@ function toggleWeekday(code, dayKey) {
   const estimate = input?.closest('.weekly-editor')?.querySelector('.monthly-estimate strong');
   if (estimate) estimate.textContent = String(item.qty);
 
-  renderApproved();
-  renderTotals();
+  scheduleDerivedRender();
   return item.days.includes(dayKey);
 }
 
@@ -376,7 +470,7 @@ function renderApproved() {
       </div>
     `;
 
-    wrapper.querySelector('.remove-button').addEventListener('click', () => removeService(service.code));
+    bindFastTap(wrapper.querySelector('.remove-button'), () => removeService(service.code));
     wrapper.querySelector('.qty-input').addEventListener('change', event => updateQty(service.code, event.target.value));
     wrapper.querySelector('.qty-input').addEventListener('blur', event => updateQty(service.code, event.target.value));
     els.approvedList.appendChild(wrapper);
@@ -448,7 +542,7 @@ els.serviceSearch.addEventListener('input', event => {
 });
 
 document.querySelectorAll('.filter-chip').forEach(button => {
-  button.addEventListener('click', () => {
+  bindFastTap(button, () => {
     state.filter = button.dataset.filter;
     document.querySelectorAll('.filter-chip').forEach(chip => chip.classList.toggle('active', chip === button));
     renderServices();
