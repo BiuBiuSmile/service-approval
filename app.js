@@ -171,11 +171,13 @@ function renderServices() {
     fragment.querySelector('.service-price').textContent = `單價 ${money.format(service.price)} 元｜一般 ${money.format(service.generalCopay)}｜中低 ${money.format(service.middleLowCopay)}`;
     const mark = fragment.querySelector('.add-mark');
     const selectedItem = state.items.find(item => item.code === service.code);
+    button.setAttribute('aria-pressed', selectedItem ? 'true' : 'false');
 
     if (selectedCodes.has(service.code) && selectedItem) {
       card.dataset.selected = 'true';
       mark.textContent = '✓';
-      mark.setAttribute('aria-label', '已加入');
+      mark.setAttribute('aria-label', '已加入，點一下可取消');
+      button.title = '點一下取消此服務';
 
       const weeklyEditor = document.createElement('div');
       weeklyEditor.className = 'weekly-editor';
@@ -233,9 +235,19 @@ function renderServices() {
       card.appendChild(weeklyEditor);
     }
 
-    button.addEventListener('click', () => addService(service.code));
+    button.addEventListener('click', () => toggleService(service.code));
     els.serviceList.appendChild(fragment);
   });
+}
+
+function toggleService(code) {
+  const existing = state.items.find(item => item.code === code);
+  if (existing) {
+    // 已選取的服務再次點擊（包含右側勾勾）時，直接取消並縮回卡片。
+    removeService(code);
+    return;
+  }
+  addService(code);
 }
 
 function addService(code) {

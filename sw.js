@@ -1,4 +1,4 @@
-const CACHE_NAME = 'service-approval-mobile-v7';
+const CACHE_NAME = 'service-approval-mobile-v8';
 const ASSETS = [
   './',
   './index.html',
