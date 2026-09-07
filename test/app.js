@@ -224,11 +224,41 @@ function capacityMarkup(service) {
   `;
 }
 
+
+function approvedCapacityMarkup(service) {
+  const {
+    remaining,
+    additionalUnits,
+    additionalWeeklyQty,
+    additionalMonthlyQty,
+    additionalCost,
+  } = getCapacityInfo(service);
+
+  if (remaining < 0) {
+    return `<span class="capacity-empty">目前已超出核定額度，${service.code} 暫無可增加次數</span>`;
+  }
+  if (remaining === 0) {
+    return `<span class="capacity-empty">目前核定額度已使用完畢，${service.code} 暫無可增加次數</span>`;
+  }
+  if (additionalUnits <= 0 || additionalWeeklyQty <= 0) {
+    return `
+      <span class="capacity-empty">目前不足以再增加每週服務次數</span>
+      <span class="capacity-remaining">${service.code} 單價 ${money.format(service.price)} 元／單位</span>
+    `;
+  }
+
+  return `
+    <span class="capacity-weekly">每週約 <strong>+${additionalWeeklyQty}</strong> 次</span>
+    <span class="capacity-monthly">每月約 +${additionalMonthlyQty} 單位｜約 ${money.format(additionalCost)} 元</span>
+  `;
+}
+
 function updateCapacityHints() {
   document.querySelectorAll('.capacity-hint[data-code]').forEach(hint => {
     const service = getService(hint.dataset.code);
     if (!service) return;
-    hint.innerHTML = capacityMarkup(service);
+    const approvedView = hint.classList.contains('approved-capacity-hint');
+    hint.innerHTML = approvedView ? approvedCapacityMarkup(service) : capacityMarkup(service);
     const { remaining, additionalWeeklyQty } = getCapacityInfo(service);
     hint.classList.toggle('capacity-none', remaining <= 0 || additionalWeeklyQty <= 0);
   });
@@ -367,10 +397,14 @@ function buildServiceOverviewHtml() {
     }
     .eyebrow { margin:0 0 4px; color:var(--brand); font-size:12px; font-weight:900; letter-spacing:.08em; }
     h1 { margin:0; font-size:28px; line-height:1.15; }
-    .print-btn {
+    .top-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+    .action-btn {
       flex:0 0 auto; border:1px solid #c4d5eb; border-radius:12px; background:#fff;
       color:var(--brand-dark); padding:10px 12px; font:inherit; font-size:12px; font-weight:900; cursor:pointer;
+      -webkit-tap-highlight-color:transparent; touch-action:manipulation;
     }
+    .action-btn:active { transform:scale(.98); }
+    .return-btn { border-color:var(--brand); background:var(--brand); color:#fff; }
     .summary-card {
       padding:17px; border:1px solid var(--line); border-radius:20px; background:rgba(255,255,255,.94);
       box-shadow:0 14px 35px rgba(62,95,138,.09);
@@ -428,6 +462,9 @@ function buildServiceOverviewHtml() {
     .note { margin:18px 4px 0; color:var(--muted); font-size:11px; line-height:1.6; text-align:center; }
     @media (max-width:420px) {
       .page { padding-left:10px; padding-right:10px; }
+      .top { align-items:flex-start; }
+      .top-actions { max-width:175px; gap:6px; }
+      .action-btn { padding:9px 10px; font-size:11px; }
       h1 { font-size:24px; }
       .big-grid { grid-template-columns:1fr 1fr; }
       .big-stat:last-child { grid-column:1 / -1; }
@@ -439,7 +476,7 @@ function buildServiceOverviewHtml() {
     @media print {
       body { background:#fff; }
       .page { width:100%; max-width:none; padding:0; }
-      .print-btn { display:none; }
+      .top-actions { display:none; }
       .summary-card,.service-overview-card { box-shadow:none; break-inside:avoid; }
     }
   </style>
@@ -451,7 +488,10 @@ function buildServiceOverviewHtml() {
         <p class="eyebrow">居督行動工具</p>
         <h1>服務項目總覽</h1>
       </div>
-      <button class="print-btn" type="button" onclick="window.print()">列印／儲存 PDF</button>
+      <div class="top-actions">
+        <button class="action-btn return-btn" type="button" onclick="window.close()">返回服務項目核定工具</button>
+        <button class="action-btn" type="button" onclick="window.print()">列印／儲存 PDF</button>
+      </div>
     </header>
 
     <section class="summary-card">
@@ -600,14 +640,13 @@ function createWeeklyEditor(service, selectedItem) {
         <span>次</span>
       </div>
     </div>
-    <div class="weekly-hint">選星期會自動帶入次數，仍可手動修改</div>
     <div class="monthly-estimate" aria-live="polite">
       預估每月 <strong>${estimateMonthlyQty(selectedItem.weeklyQty ?? 0)}</strong> 單位
       <span>（每週次數 × 約 4.5 週（大月））</span>
     </div>
     <div class="capacity-box">
       <span class="capacity-title">目前額度還能增加</span>
-      <p class="capacity-hint" data-code="${service.code}">${capacityMarkup(service)}</p>
+      <p class="capacity-hint approved-capacity-hint" data-code="${service.code}">${approvedCapacityMarkup(service)}</p>
     </div>
     <div class="weekday-editor">
       <span class="weekday-label">服務星期</span>
@@ -841,6 +880,10 @@ function renderApproved() {
           <strong>${money.format(service.price * item.qty)} 元</strong>
         </div>
       </div>
+      <div class="capacity-box approved-capacity-box">
+        <span class="capacity-title">目前額度還能增加</span>
+        <p class="capacity-hint approved-capacity-hint" data-code="${service.code}">${approvedCapacityMarkup(service)}</p>
+      </div>
     `;
 
     bindFastTap(wrapper.querySelector('.remove-button'), () => removeService(service.code));
@@ -889,7 +932,7 @@ function renderTotals() {
     els.budgetHint.textContent = `已使用 ${usage.toFixed(1)}% 核定額度。`;
   }
 
-  // v14：服務卡片展開時，同步顯示「依目前剩餘額度，每週約還可增加幾次」。
+  // v19：STEP 2 與 STEP 3 同步顯示「依目前剩餘額度，每週約還可增加幾次」。
   updateCapacityHints();
 }
 

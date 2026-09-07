@@ -749,3 +749,13 @@ main { padding: 14px; }
   font-size: 28px;
   line-height: 1;
 }
+
+
+/* v19：STEP 3 每個核定項目也顯示目前額度還能增加多少服務。 */
+.approved-capacity-box {
+  margin-top: 12px;
+}
+
+.approved-capacity-box .capacity-hint {
+  grid-template-columns: 1fr;
+}
