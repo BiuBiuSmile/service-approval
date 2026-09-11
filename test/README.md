@@ -162,3 +162,9 @@
 ## v21 更新
 - STEP 2 移除「選星期會自動帶入次數，仍可手動修改」提示文字。
 - STEP 2 的「目前額度還能增加」移除「目前剩餘額度」那一行，畫面更精簡。
+
+
+## v22 更新：Cloudflare Web Analytics
+- 已在正式 `index.html` 加入 Cloudflare Web Analytics。
+- Cloudflare 後台可查看訪客數、瀏覽次數、裝置與基本流量趨勢。
+- 分析代碼只放在正式頁面；本機 `preview.html` 不送出分析資料，避免測試流量干擾統計。
