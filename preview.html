@@ -7,18 +7,18 @@
   <meta http-equiv="Expires" content="0" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#5f8fd6" />
-  <meta name="description" content="手機版長照服務項目核定單，可快速選擇身分別、失能等級與服務項目並計算核定額度。" />
-  <title>服務項目核定單</title>
+  <meta name="description" content="支援電腦與手機的長照服務項目核定單，可快速選擇身分別、失能等級與服務項目並計算核定額度。" />
+  <title>服務項目核定工具</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="styles.css?v=14" />
+  <link rel="stylesheet" href="styles.css?v=23" />
 </head>
 <body>
   <div class="app-shell">
     <header class="topbar">
       <div>
         <p class="eyebrow">居督行動工具</p>
-        <h1>服務項目核定單</h1>
+        <h1>服務項目核定單工具</h1>
       </div>
       <button id="resetBtn" class="ghost-button" type="button">清空</button>
     </header>
@@ -30,9 +30,11 @@
             <p class="step">STEP 1</p>
             <h2 id="basic-title">基本核定資料</h2>
           </div>
-          <span class="privacy-badge">不填姓名</span>
+
         </div>
 
+        <div class="basic-fields">
+        <div class="basic-field">
         <label class="field-label" for="identitySelect">身分別</label>
         <select id="identitySelect" class="input-control">
           <option value="general">第三類（一般戶）</option>
@@ -40,6 +42,8 @@
           <option value="low">第一類（長照低收入戶）</option>
         </select>
 
+        </div>
+        <div class="basic-field">
         <label class="field-label" for="levelSelect">失能等級</label>
         <select id="levelSelect" class="input-control">
           <option value="2">第2級｜10,020 元</option>
@@ -51,6 +55,7 @@
           <option value="8">第8級｜36,180 元</option>
         </select>
 
+        </div>
         <div class="summary-grid" aria-live="polite">
           <div class="summary-box">
             <span>每月核定額度</span>
@@ -63,9 +68,10 @@
             <small id="copayLabel">一般戶</small>
           </div>
         </div>
+        </div>
       </section>
 
-      <section class="card" aria-labelledby="service-title">
+      <section class="card service-section" aria-labelledby="service-title">
         <div class="section-heading">
           <div>
             <p class="step">STEP 2</p>
@@ -87,8 +93,9 @@
         <div id="serviceList" class="service-list" aria-live="polite"></div>
       </section>
 
-      <section class="card" aria-labelledby="approved-title">
-        <div class="section-heading">
+      <div class="review-column">
+      <section id="step3Section" class="card" aria-labelledby="approved-title">
+        <div class="section-heading step3-heading">
           <div>
             <p class="step">STEP 3</p>
             <h2 id="approved-title">本月核定項目</h2>
@@ -96,12 +103,21 @@
           <button id="clearItemsBtn" class="text-button" type="button">清除項目</button>
         </div>
 
+        <button id="overviewBtn" class="overview-button" type="button">
+          <span class="overview-button-icon" aria-hidden="true">▦</span>
+          <span>
+            <strong>產出服務項目總覽</strong>
+            <small>另開新分頁查看每週服務次數</small>
+          </span>
+          <span class="overview-button-arrow" aria-hidden="true">›</span>
+        </button>
+
         <div id="approvedList" class="approved-list empty-state">
           尚未加入服務項目
         </div>
       </section>
 
-      <section class="result-panel" aria-label="核定計算結果">
+      <section id="resultPanel" class="result-panel" aria-label="核定計算結果，點一下可跳到 Step 3" role="button" tabindex="0">
         <div class="result-row">
           <span>預估每月服務總額</span>
           <strong><span id="serviceTotal">0</span> 元</strong>
@@ -123,7 +139,10 @@
           <div id="budgetProgress" class="progress-bar" style="width: 0%"></div>
         </div>
         <p id="budgetHint" class="budget-hint">目前尚未使用核定額度。</p>
+        <p class="result-panel-tip">點一下此區可快速查看 Step 3 本月核定項目</p>
       </section>
+
+      </div>
 
       <p class="footer-note">
         本工具為行動查詢與試算用途；資料僅在目前頁面暫存，不會保留上一筆操作，也不會上傳個案資料。
@@ -144,6 +163,6 @@
     </article>
   </template>
 
-  <script src="app.js?v=14"></script>
+  <script src="app.js?v=23"></script>
 </body>
 </html>

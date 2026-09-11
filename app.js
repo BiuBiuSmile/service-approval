@@ -473,6 +473,11 @@ function buildServiceOverviewHtml() {
       .copay-detail-box { grid-column:1 / -1; }
       .weekly-number strong { font-size:26px; }
     }
+    @media screen and (min-width: 1024px) {
+      .page { width:min(100%,1200px); padding:28px 32px 48px; }
+      .service-list { grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; }
+      .summary-card { padding:24px; }
+    }
     @media print {
       body { background:#fff; }
       .page { width:100%; max-width:none; padding:0; }
