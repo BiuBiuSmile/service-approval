@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v29';
+const CACHE_VERSION = 'v30';
 const CACHE_PREFIX = 'service-approval-pwa-';
 const CACHE_NAME = `${CACHE_PREFIX}${CACHE_VERSION}`;
 const LEGACY_PREFIXES = ['service-approval-mobile-', 'service-approval-main-'];
@@ -9,8 +9,8 @@ const inScope = path => new URL(path, BASE_URL).href;
 const APP_SHELL = [
   inScope('./'),
   inScope('./index.html'),
-  inScope('./styles.css?v=29'),
-  inScope('./app.js?v=29'),
+  inScope('./styles.css?v=30'),
+  inScope('./app.js?v=30'),
   inScope('./manifest.webmanifest'),
   inScope('./icon.svg'),
   inScope('./icon-180.png'),

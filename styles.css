@@ -931,3 +931,27 @@ html.is-offline .topbar {
 .combined-total small { grid-column: 1 / -1; color: var(--muted); font-size: 11px; font-weight: 700; }
 .capacity-single { display:block; margin-top:5px; color:#6b59a4; font-size:12px; font-weight:800; }
 .qty-helper { display:block; margin-top:5px; color:var(--muted); font-size:11px; font-weight:700; }
+
+
+/* v30：每週計算與單次計算改為可複選，兩者可同時合併。 */
+.calc-mode-switch.multi-mode {
+  margin-bottom: 0;
+}
+.calc-mode-note {
+  margin: 7px 2px 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.calc-section {
+  display: grid;
+  gap: 10px;
+}
+.combined-total.is-empty {
+  background: #f8fafd;
+  border-style: dashed;
+}
+.combined-total.is-empty strong {
+  color: var(--muted);
+}

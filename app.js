@@ -142,12 +142,28 @@ function estimateMonthlyQty(weeklyQty) {
   return Math.round(weekly * WEEKS_PER_MONTH);
 }
 
-function getWeeklyQty(item) {
+function getStoredWeeklyQty(item) {
   return Math.max(0, Math.floor(Number(item?.weeklyQty) || 0));
 }
 
-function getSingleQty(item) {
+function getStoredSingleQty(item) {
   return Math.max(0, Math.floor(Number(item?.singleQty) || 0));
+}
+
+function isWeeklyEnabled(item) {
+  return item?.weeklyEnabled === true;
+}
+
+function isSingleEnabled(item) {
+  return item?.singleEnabled === true;
+}
+
+function getWeeklyQty(item) {
+  return isWeeklyEnabled(item) ? getStoredWeeklyQty(item) : 0;
+}
+
+function getSingleQty(item) {
+  return isSingleEnabled(item) ? getStoredSingleQty(item) : 0;
 }
 
 function getMonthlyQty(item) {
@@ -232,7 +248,7 @@ function capacityMarkup(service) {
 
   return `
     ${weeklyLine}
-    <span class="capacity-single">或單次備用最多 <strong>+${additionalUnits}</strong> 單位｜約 ${money.format(additionalSingleCost)} 元</span>
+    <span class="capacity-single">或單次服務最多 <strong>+${additionalUnits}</strong> 單位｜約 ${money.format(additionalSingleCost)} 元</span>
   `;
 }
 
@@ -262,7 +278,7 @@ function approvedCapacityMarkup(service) {
 
   return `
     ${weeklyLine}
-    <span class="capacity-single">單次備用最多 <strong>+${additionalUnits}</strong> 單位｜約 ${money.format(additionalSingleCost)} 元</span>
+    <span class="capacity-single">單次服務最多 <strong>+${additionalUnits}</strong> 單位｜約 ${money.format(additionalSingleCost)} 元</span>
   `;
 }
 
@@ -314,7 +330,7 @@ function buildServiceOverviewHtml() {
     const singleQty = getSingleQty(item);
     const weeklyMonthlyQty = estimateMonthlyQty(weeklyQty);
     const monthlyQty = Math.max(0, Math.floor(Number(item.qty) || 0));
-    const weekdayKeys = Array.isArray(item.days) ? item.days : [];
+    const weekdayKeys = isWeeklyEnabled(item) && Array.isArray(item.days) ? item.days : [];
     const weekdayChips = WEEKDAYS.map(day => {
       const active = weekdayKeys.includes(day.key);
       return `<span class="day-chip${active ? ' active' : ''}">${escapeOverviewHtml(day.short)}</span>`;
@@ -324,11 +340,11 @@ function buildServiceOverviewHtml() {
     const unitCopay = getCopayPerUnit(service);
     const itemCopay = unitCopay * monthlyQty;
     const configLabel = weeklyQty > 0 && singleQty > 0
-      ? '每週固定＋單次備用'
+      ? '每週固定＋單次服務'
       : weeklyQty > 0
         ? '每週固定'
         : singleQty > 0
-          ? '單次備用'
+          ? '單次服務'
           : '尚未設定';
 
     return `
@@ -355,7 +371,7 @@ function buildServiceOverviewHtml() {
             <strong>${weeklyMonthlyQty} 單位</strong>
           </div>
           <div class="detail-box single-detail-box">
-            <span>額外單次／備用</span>
+            <span>單次服務</span>
             <strong>+${singleQty} 單位</strong>
           </div>
           <div class="detail-box total-detail-box">
@@ -378,7 +394,7 @@ function buildServiceOverviewHtml() {
           ${weeklyQty > 0 && !weekdayKeys.length ? '<p class="no-day">尚未指定固定服務星期</p>' : ''}
         </div>
 
-        ${singleQty > 0 ? `<div class="single-overview-note">本月另加 ${singleQty} 單位單次／備用服務，已與固定每週服務合併計入月總單位。</div>` : ''}
+        ${singleQty > 0 ? `<div class="single-overview-note">本月另加 ${singleQty} 單位單次服務，已與每週固定服務合併計入本月總單位。</div>` : ''}
 
         ${weeklyQty > 0 ? `
           <div class="share-block" aria-hidden="true">
@@ -488,7 +504,7 @@ function buildServiceOverviewHtml() {
       <div class="big-grid">
         <div class="big-stat"><span>使用服務</span><strong>${state.items.length} 項</strong></div>
         <div class="big-stat"><span>每週總服務</span><strong>${totalWeeklyQty} 次</strong></div>
-        <div class="big-stat"><span>單次備用</span><strong>${totalSingleQty} 單位</strong></div>
+        <div class="big-stat"><span>單次服務</span><strong>${totalSingleQty} 單位</strong></div>
         <div class="big-stat"><span>預估每月</span><strong>${totalMonthlyQty} 單位</strong></div>
       </div>
       <div class="budget-row">
@@ -500,7 +516,7 @@ function buildServiceOverviewHtml() {
     </section>
     <section class="section-title"><p>SERVICE OVERVIEW</p><h2>服務項目</h2></section>
     <section class="service-list">${serviceRows}</section>
-    <p class="note">每月合計單位＝每週固定次數 × 約 4.5 週（大月）＋本月額外單次／備用單位。</p>
+    <p class="note">每月合計單位＝每週固定次數 × 約 4.5 週（大月）＋本月單次服務單位。</p>
   </main>
 </body>
 </html>`;
@@ -605,50 +621,80 @@ function scheduleDerivedRender() {
 function createWeeklyEditor(service, selectedItem) {
   const editor = document.createElement('div');
   editor.className = 'weekly-editor';
+  editor.dataset.code = service.code;
+
+  const weeklyEnabled = isWeeklyEnabled(selectedItem);
+  const singleEnabled = isSingleEnabled(selectedItem);
+  const storedWeeklyQty = getStoredWeeklyQty(selectedItem);
+  const storedSingleQty = getStoredSingleQty(selectedItem);
   const weeklyQty = getWeeklyQty(selectedItem);
   const singleQty = getSingleQty(selectedItem);
   const weeklyMonthlyQty = estimateMonthlyQty(weeklyQty);
   const totalMonthlyQty = weeklyMonthlyQty + singleQty;
 
+  const weeklySection = weeklyEnabled ? `
+    <div class="calc-section weekly-config-section">
+      <div class="editor-section-title">每週固定服務</div>
+      <div class="weekly-row">
+        <span class="weekly-label">一週次數</span>
+        <div class="weekly-control">
+          <input class="weekly-input" type="number" inputmode="numeric" min="0" step="1" value="${storedWeeklyQty}" aria-label="${service.code} 一週服務次數" />
+          <span>次</span>
+        </div>
+      </div>
+      <div class="monthly-estimate weekly-monthly-estimate" aria-live="polite">
+        固定服務預估每月 <strong>${weeklyMonthlyQty}</strong> 單位
+        <span>（每週次數 × 約 4.5 週（大月））</span>
+      </div>
+      <div class="weekday-editor">
+        <span class="weekday-label">服務星期</span>
+        <div class="weekday-chips" role="group" aria-label="${service.code} 服務星期">
+          ${WEEKDAYS.map(day => `<button type="button" class="weekday-chip${(selectedItem.days || []).includes(day.key) ? ' active' : ''}" data-day="${day.key}" aria-pressed="${(selectedItem.days || []).includes(day.key)}" title="${day.label}">${day.short}</button>`).join('')}
+        </div>
+      </div>
+    </div>
+  ` : '';
+
+  const singleSection = singleEnabled ? `
+    <div class="calc-section single-config-section">
+      <div class="editor-section-title single-title">單次服務</div>
+      <div class="weekly-row single-row">
+        <span class="weekly-label">本月單次單位</span>
+        <div class="weekly-control">
+          <input class="single-input" type="number" inputmode="numeric" min="0" step="1" value="${storedSingleQty}" aria-label="${service.code} 本月單次數量" />
+          <span>單位</span>
+        </div>
+      </div>
+      <div class="monthly-estimate single-estimate" aria-live="polite">
+        單次服務直接加 <strong>${singleQty}</strong> 單位
+        <span>（不乘 4.5 週）</span>
+      </div>
+    </div>
+  ` : '';
+
+  const combinedText = weeklyEnabled && singleEnabled
+    ? `${weeklyMonthlyQty} 週期月估 + ${singleQty} 單次服務`
+    : weeklyEnabled
+      ? `${weeklyMonthlyQty} 週期月估`
+      : singleEnabled
+        ? `${singleQty} 單次服務`
+        : '請先選擇計算方式';
+
   editor.innerHTML = `
-    <div class="editor-section-title">每週固定服務</div>
-    <div class="weekly-row">
-      <span class="weekly-label">一週次數</span>
-      <div class="weekly-control">
-        <input class="weekly-input" type="number" inputmode="numeric" min="0" step="1" value="${weeklyQty}" aria-label="${service.code} 一週服務次數" />
-        <span>次</span>
-      </div>
+    <div class="calc-mode-switch multi-mode" role="group" aria-label="${service.code} 計算方式，可複選">
+      <button type="button" class="calc-mode-btn${weeklyEnabled ? ' active' : ''}" data-mode="weekly" aria-pressed="${weeklyEnabled}">每週計算</button>
+      <button type="button" class="calc-mode-btn${singleEnabled ? ' active' : ''}" data-mode="single" aria-pressed="${singleEnabled}">單次計算</button>
     </div>
-    <div class="monthly-estimate weekly-monthly-estimate" aria-live="polite">
-      固定服務預估每月 <strong>${weeklyMonthlyQty}</strong> 單位
-      <span>（每週次數 × 約 4.5 週（大月））</span>
-    </div>
-    <div class="weekday-editor">
-      <span class="weekday-label">服務星期</span>
-      <div class="weekday-chips" role="group" aria-label="${service.code} 服務星期">
-        ${WEEKDAYS.map(day => `<button type="button" class="weekday-chip${(selectedItem.days || []).includes(day.key) ? ' active' : ''}" data-day="${day.key}" aria-pressed="${(selectedItem.days || []).includes(day.key)}" title="${day.label}">${day.short}</button>`).join('')}
-      </div>
-    </div>
+    <p class="calc-mode-note">兩種方式可同時選擇，系統會自動合併本月單位數。</p>
 
-    <div class="editor-divider"></div>
+    ${weeklySection}
+    ${weeklyEnabled && singleEnabled ? '<div class="editor-divider"></div>' : ''}
+    ${singleSection}
 
-    <div class="editor-section-title single-title">額外單次／備用</div>
-    <div class="weekly-row single-row">
-      <span class="weekly-label">本月額外數量</span>
-      <div class="weekly-control">
-        <input class="single-input" type="number" inputmode="numeric" min="0" step="1" value="${singleQty}" aria-label="${service.code} 本月單次數量" />
-        <span>單位</span>
-      </div>
-    </div>
-    <div class="monthly-estimate single-estimate" aria-live="polite">
-      額外單次直接加 <strong>${singleQty}</strong> 單位
-      <span>（不乘 4.5 週）</span>
-    </div>
-
-    <div class="combined-total" aria-live="polite">
+    <div class="combined-total${!weeklyEnabled && !singleEnabled ? ' is-empty' : ''}" aria-live="polite">
       <span>本月合計</span>
       <strong>${totalMonthlyQty} 單位</strong>
-      <small>${weeklyMonthlyQty} 固定月估 + ${singleQty} 單次／備用</small>
+      <small>${combinedText}</small>
     </div>
 
     <div class="capacity-box">
@@ -657,15 +703,26 @@ function createWeeklyEditor(service, selectedItem) {
     </div>
   `;
 
+  editor.querySelectorAll('.calc-mode-btn').forEach(modeButton => {
+    bindFastTap(modeButton, event => {
+      event.stopPropagation();
+      toggleCalcMode(service.code, modeButton.dataset.mode);
+    });
+  });
+
   const weeklyInput = editor.querySelector('.weekly-input');
-  weeklyInput.addEventListener('click', event => event.stopPropagation());
-  weeklyInput.addEventListener('input', event => updateWeeklyQty(service.code, event.target.value));
-  weeklyInput.addEventListener('change', event => updateWeeklyQty(service.code, event.target.value));
+  if (weeklyInput) {
+    weeklyInput.addEventListener('click', event => event.stopPropagation());
+    weeklyInput.addEventListener('input', event => updateWeeklyQty(service.code, event.target.value));
+    weeklyInput.addEventListener('change', event => updateWeeklyQty(service.code, event.target.value));
+  }
 
   const singleInput = editor.querySelector('.single-input');
-  singleInput.addEventListener('click', event => event.stopPropagation());
-  singleInput.addEventListener('input', event => updateSingleQty(service.code, event.target.value));
-  singleInput.addEventListener('change', event => updateSingleQty(service.code, event.target.value));
+  if (singleInput) {
+    singleInput.addEventListener('click', event => event.stopPropagation());
+    singleInput.addEventListener('input', event => updateSingleQty(service.code, event.target.value));
+    singleInput.addEventListener('change', event => updateSingleQty(service.code, event.target.value));
+  }
 
   editor.querySelectorAll('.weekday-chip').forEach(dayButton => {
     bindFastTap(dayButton, event => {
@@ -754,7 +811,7 @@ function toggleService(code) {
 function addService(code) {
   if (state.items.some(item => item.code === code)) return;
 
-  state.items.push({ code, qty: 0, weeklyQty: 0, singleQty: 0, days: [] });
+  state.items.push({ code, qty: 0, weeklyEnabled: false, singleEnabled: false, weeklyQty: 0, singleQty: 0, days: [] });
   saveState();
   syncVisibleServiceCard(code);
   scheduleDerivedRender();
@@ -767,15 +824,33 @@ function removeService(code) {
   scheduleDerivedRender();
 }
 
+function toggleCalcMode(code, mode) {
+  const item = state.items.find(entry => entry.code === code);
+  if (!item) return;
+
+  if (mode === 'weekly') {
+    item.weeklyEnabled = !isWeeklyEnabled(item);
+  } else if (mode === 'single') {
+    item.singleEnabled = !isSingleEnabled(item);
+  } else {
+    return;
+  }
+
+  item.qty = getMonthlyQty(item);
+  saveState();
+  syncVisibleServiceCard(code);
+  scheduleDerivedRender();
+}
+
 function updateCombinedEditorDisplay(code) {
   const item = state.items.find(entry => entry.code === code);
   if (!item) return;
-  const editor = Array.from(document.querySelectorAll('.weekly-editor')).find(node =>
-    node.querySelector(`[aria-label="${code} 一週服務次數"]`) ||
-    node.querySelector(`[aria-label="${code} 本月單次數量"]`)
-  );
+  const editor = Array.from(document.querySelectorAll('.weekly-editor'))
+    .find(node => node.dataset.code === code);
   if (!editor) return;
 
+  const weeklyEnabled = isWeeklyEnabled(item);
+  const singleEnabled = isSingleEnabled(item);
   const weeklyMonthlyQty = estimateMonthlyQty(getWeeklyQty(item));
   const singleQty = getSingleQty(item);
   const total = weeklyMonthlyQty + singleQty;
@@ -786,13 +861,22 @@ function updateCombinedEditorDisplay(code) {
   if (weeklyEstimate) weeklyEstimate.textContent = String(weeklyMonthlyQty);
   if (singleEstimate) singleEstimate.textContent = String(singleQty);
   if (totalStrong) totalStrong.textContent = `${total} 單位`;
-  if (totalSmall) totalSmall.textContent = `${weeklyMonthlyQty} 固定月估 + ${singleQty} 單次／備用`;
+  if (totalSmall) {
+    totalSmall.textContent = weeklyEnabled && singleEnabled
+      ? `${weeklyMonthlyQty} 週期月估 + ${singleQty} 單次服務`
+      : weeklyEnabled
+        ? `${weeklyMonthlyQty} 週期月估`
+        : singleEnabled
+          ? `${singleQty} 單次服務`
+          : '請先選擇計算方式';
+  }
 }
 
 function updateSingleQty(code, value) {
   const item = state.items.find(entry => entry.code === code);
   if (!item) return;
 
+  item.singleEnabled = true;
   item.singleQty = Math.max(0, Math.floor(Number(value) || 0));
   item.qty = getMonthlyQty(item);
   saveState();
@@ -806,8 +890,18 @@ function updateQty(code, value) {
 
   const requestedTotal = Math.max(0, Math.floor(Number(value) || 0));
   const weeklyMonthlyQty = estimateMonthlyQty(getWeeklyQty(item));
-  item.singleQty = Math.max(0, requestedTotal - weeklyMonthlyQty);
-  item.qty = weeklyMonthlyQty + item.singleQty;
+
+  // STEP 3 若把合計調高，超出固定週期的部分自動歸入「單次計算」。
+  // 若沒有啟用每週計算，則全部視為單次服務。
+  if (!isWeeklyEnabled(item)) {
+    item.singleEnabled = requestedTotal > 0 || isSingleEnabled(item);
+    item.singleQty = requestedTotal;
+  } else {
+    item.singleQty = Math.max(0, requestedTotal - weeklyMonthlyQty);
+    if (item.singleQty > 0) item.singleEnabled = true;
+  }
+
+  item.qty = getMonthlyQty(item);
   saveState();
   syncVisibleServiceCard(code);
   renderApproved();
@@ -818,6 +912,7 @@ function updateWeeklyQty(code, value) {
   const item = state.items.find(entry => entry.code === code);
   if (!item) return;
 
+  item.weeklyEnabled = true;
   item.weeklyQty = Math.max(0, Math.floor(Number(value) || 0));
   item.qty = getMonthlyQty(item);
   saveState();
@@ -829,6 +924,7 @@ function toggleWeekday(code, dayKey) {
   const item = state.items.find(entry => entry.code === code);
   if (!item || !WEEKDAYS.some(day => day.key === dayKey)) return false;
 
+  item.weeklyEnabled = true;
   if (!Array.isArray(item.days)) item.days = [];
   const index = item.days.indexOf(dayKey);
   if (index >= 0) {
@@ -885,7 +981,7 @@ function renderApproved() {
 
     const summaryParts = [];
     if (weeklyQty > 0) summaryParts.push(`每週 ${weeklyQty} 次${weekdaySummary ? `｜${weekdaySummary}` : ''}｜固定月估 ${weeklyMonthlyQty} 單位`);
-    if (singleQty > 0) summaryParts.push(`單次備用 +${singleQty} 單位`);
+    if (singleQty > 0) summaryParts.push(`單次服務 +${singleQty} 單位`);
     if (!summaryParts.length) summaryParts.push('尚未設定服務次數');
     const summaryText = `${summaryParts.join('｜')}｜本月合計 ${totalQty} 單位`;
 
@@ -904,7 +1000,7 @@ function renderApproved() {
         <label class="qty-field">
           <span>本月合計單位數</span>
           <input class="qty-input" type="number" inputmode="numeric" min="${weeklyMonthlyQty}" step="1" value="${totalQty}" aria-label="${service.code} 核定單位數" />
-          <small class="qty-helper">固定服務 ${weeklyMonthlyQty} + 單次備用 ${singleQty}</small>
+          <small class="qty-helper">固定服務 ${weeklyMonthlyQty} + 單次服務 ${singleQty}</small>
         </label>
         <div class="item-subtotal"><span>小計</span><strong>${money.format(service.price * totalQty)} 元</strong></div>
       </div>
