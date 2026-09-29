@@ -356,7 +356,8 @@ function buildServiceOverviewHtml() {
     }).join('');
 
     const weeklyShare = !isSingle && totalWeeklyQty > 0 ? (weeklyQty / totalWeeklyQty) * 100 : 0;
-    const itemCopay = getCopayPerUnit(service) * monthlyQty;
+    const unitCopay = getCopayPerUnit(service);
+    const itemCopay = unitCopay * monthlyQty;
     const mainNumber = isSingle ? singleQty : weeklyQty;
     const mainUnit = isSingle ? '單位／月' : '次／週';
 
@@ -382,6 +383,10 @@ function buildServiceOverviewHtml() {
           <div class="detail-box">
             <span>預估每月</span>
             <strong>${monthlyQty} 單位</strong>
+          </div>
+          <div class="detail-box unit-copay-detail-box">
+            <span>單組部分負擔</span>
+            <strong>${money.format(unitCopay)} 元</strong>
           </div>
           <div class="detail-box copay-detail-box">
             <span>預估部分負擔</span>
@@ -458,10 +463,12 @@ function buildServiceOverviewHtml() {
     .weekly-number strong { display:block; color:var(--brand-dark); font-size:30px; line-height:.95; }
     .weekly-number span { display:block; margin-top:4px; color:var(--muted); font-size:11px; font-weight:800; }
     .single-number strong { color:#735eb0; }
-    .service-detail-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-top:13px; }
+    .service-detail-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin-top:13px; }
     .detail-box { padding:10px 11px; border-radius:12px; background:#f7faff; border:1px solid #e1eaf5; }
     .detail-box span { display:block; color:var(--muted); font-size:10px; font-weight:800; }
     .detail-box strong { display:block; margin-top:3px; font-size:14px; }
+    .unit-copay-detail-box { background:#f4f8ff; border-color:#d7e3f4; }
+    .unit-copay-detail-box strong { color:#4f75ab; }
     .copay-detail-box { background:#eef4ff; border-color:#cfdef3; }
     .copay-detail-box strong { color:var(--brand-dark); }
     .weekday-block { margin-top:13px; }
@@ -476,7 +483,7 @@ function buildServiceOverviewHtml() {
     .share-block span { color:var(--muted); font-size:10px; font-weight:800; }
     .single-overview-note { margin-top:13px; padding:10px 11px; border-radius:12px; background:#f7f3ff; border:1px solid #e1d8f6; color:#6d5a91; font-size:11px; font-weight:800; line-height:1.5; }
     .note { margin:18px 4px 0; color:var(--muted); font-size:11px; line-height:1.6; text-align:center; }
-    @media (max-width:520px) { .page { padding-left:10px; padding-right:10px; } .top { align-items:flex-start; } .top-actions { max-width:175px; gap:6px; } .action-btn { padding:9px 10px; font-size:11px; } h1 { font-size:24px; } .big-grid { grid-template-columns:1fr 1fr; } .service-detail-grid { grid-template-columns:1fr 1fr; } .copay-detail-box { grid-column:1 / -1; } .weekly-number strong { font-size:26px; } }
+    @media (max-width:520px) { .page { padding-left:10px; padding-right:10px; } .top { align-items:flex-start; } .top-actions { max-width:175px; gap:6px; } .action-btn { padding:9px 10px; font-size:11px; } h1 { font-size:24px; } .big-grid { grid-template-columns:1fr 1fr; } .service-detail-grid { grid-template-columns:1fr 1fr; } .weekly-number strong { font-size:26px; } }
     @media screen and (min-width:1024px) { .page { width:min(100%,1200px); padding:28px 32px 48px; } .service-list { grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; } .summary-card { padding:24px; } }
     @media print { body { background:#fff; } .page { width:100%; max-width:none; padding:0; } .top-actions { display:none; } .summary-card,.service-overview-card { box-shadow:none; break-inside:avoid; } }
   </style>
