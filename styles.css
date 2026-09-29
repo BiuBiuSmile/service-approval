@@ -871,21 +871,18 @@ html.is-offline .topbar {
   }
 }
 
-
-/* v27：右下角作者簽名 */
+/* v28：作者簽名固定在整個頁面的右下方，不再跟著視窗捲動。 */
 .creator-signature {
-  position: fixed;
-  right: max(12px, env(safe-area-inset-right));
-  bottom: max(8px, env(safe-area-inset-bottom));
-  z-index: 40;
+  position: static;
+  width: max-content;
+  max-width: calc(100% - 28px);
+  margin: 2px 18px calc(14px + env(safe-area-inset-bottom)) auto;
   padding: 5px 9px;
   border: 1px solid rgba(95, 143, 214, .18);
   border-radius: 999px;
-  background: rgba(255, 255, 255, .78);
+  background: rgba(255, 255, 255, .82);
   color: #6f8198;
   box-shadow: 0 4px 14px rgba(62, 95, 138, .08);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
   font-size: 11px;
   font-weight: 800;
   letter-spacing: .02em;
@@ -897,8 +894,8 @@ html.is-offline .topbar {
 
 @media (max-width: 430px) {
   .creator-signature {
-    right: max(8px, env(safe-area-inset-right));
-    bottom: max(6px, env(safe-area-inset-bottom));
+    margin-right: 12px;
+    margin-bottom: calc(10px + env(safe-area-inset-bottom));
     padding: 4px 8px;
     font-size: 10px;
     opacity: .9;
