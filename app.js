@@ -109,6 +109,8 @@ const els = {
   resultPanel: document.querySelector('#resultPanel'),
   step3Section: document.querySelector('#step3Section'),
   overviewBtn: document.querySelector('#overviewBtn'),
+  installPwaBtn: document.querySelector('#installPwaBtn'),
+  offlineBadge: document.querySelector('#offlineBadge'),
 };
 
 const money = new Intl.NumberFormat('zh-TW');
@@ -1076,25 +1078,81 @@ els.resultPanel?.addEventListener('keydown', event => {
   }
 });
 
+// v26：PWA 離線模式與安裝支援。
+let deferredInstallPrompt = null;
 
-// v9：取消 Service Worker 離線快取，避免手機長時間停留在舊版本。
-// GitHub Pages 本身即可讓電腦關機後仍從手機連線使用。
+function isStandaloneMode() {
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+
+function isIosDevice() {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent);
+}
+
+function refreshNetworkStatus() {
+  if (!els.offlineBadge) return;
+  const offline = !navigator.onLine;
+  els.offlineBadge.hidden = !offline;
+  els.offlineBadge.textContent = '離線';
+  document.documentElement.classList.toggle('is-offline', offline);
+}
+
+function refreshInstallButton() {
+  if (!els.installPwaBtn) return;
+  if (isStandaloneMode()) {
+    els.installPwaBtn.hidden = true;
+    return;
+  }
+
+  // Android / Chrome 等支援 beforeinstallprompt；iPhone 則顯示手動安裝說明入口。
+  els.installPwaBtn.hidden = !(deferredInstallPrompt || isIosDevice());
+}
+
+window.addEventListener('online', refreshNetworkStatus);
+window.addEventListener('offline', refreshNetworkStatus);
+refreshNetworkStatus();
+refreshInstallButton();
+
+window.addEventListener('beforeinstallprompt', event => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  refreshInstallButton();
+});
+
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  refreshInstallButton();
+});
+
+els.installPwaBtn?.addEventListener('click', async () => {
+  if (deferredInstallPrompt) {
+    deferredInstallPrompt.prompt();
+    try {
+      await deferredInstallPrompt.userChoice;
+    } catch (_) {}
+    deferredInstallPrompt = null;
+    refreshInstallButton();
+    return;
+  }
+
+  if (isIosDevice()) {
+    alert('iPhone／iPad 安裝方式：請使用 Safari 開啟此網站，點下方「分享」按鈕，再選擇「加入主畫面」。第一次請先連網開啟一次，完成後即可離線使用。');
+  }
+});
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', async () => {
     try {
-      const registration = await navigator.serviceWorker.getRegistration();
-      if (registration) await registration.unregister();
-    } catch (_) {}
-
-    if ('caches' in window) {
-      try {
-        const keys = await caches.keys();
-        await Promise.all(
-          keys
-            .filter(key => key.startsWith('service-approval-mobile-'))
-            .map(key => caches.delete(key))
-        );
-      } catch (_) {}
+      const registration = await navigator.serviceWorker.register('./sw.js?v=26', {
+        scope: './',
+        updateViaCache: 'none',
+      });
+      // 每次有網路開啟時主動檢查新版 SW，避免長時間卡在舊版本。
+      if (navigator.onLine) {
+        try { await registration.update(); } catch (_) {}
+      }
+    } catch (error) {
+      console.warn('PWA 離線功能註冊失敗：', error);
     }
   });
 }
