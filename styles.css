@@ -905,3 +905,29 @@ html.is-offline .topbar {
 @media print {
   .creator-signature { display: none !important; }
 }
+
+
+/* v29：每週固定 + 單次備用合併計算 */
+.editor-section-title {
+  color: var(--brand-dark);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .03em;
+}
+.editor-section-title.single-title { color: #6b59a4; }
+.editor-divider { height: 1px; background: #d7e3f2; margin: 2px 0; }
+.combined-total {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 10px;
+  align-items: center;
+  padding: 11px 12px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #edf4ff, #f7f3ff);
+  border: 1px solid #d8e1f2;
+}
+.combined-total span { color: #5f7189; font-size: 12px; font-weight: 900; }
+.combined-total strong { color: var(--brand-dark); font-size: 17px; }
+.combined-total small { grid-column: 1 / -1; color: var(--muted); font-size: 11px; font-weight: 700; }
+.capacity-single { display:block; margin-top:5px; color:#6b59a4; font-size:12px; font-weight:800; }
+.qty-helper { display:block; margin-top:5px; color:var(--muted); font-size:11px; font-weight:700; }

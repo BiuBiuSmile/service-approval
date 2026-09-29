@@ -142,12 +142,16 @@ function estimateMonthlyQty(weeklyQty) {
   return Math.round(weekly * WEEKS_PER_MONTH);
 }
 
-function getCalculationMode(item) {
-  return item?.calcMode === 'single' ? 'single' : 'weekly';
+function getWeeklyQty(item) {
+  return Math.max(0, Math.floor(Number(item?.weeklyQty) || 0));
 }
 
 function getSingleQty(item) {
   return Math.max(0, Math.floor(Number(item?.singleQty) || 0));
+}
+
+function getMonthlyQty(item) {
+  return estimateMonthlyQty(getWeeklyQty(item)) + getSingleQty(item);
 }
 
 function calculateTotals() {
@@ -176,22 +180,9 @@ function getCapacityInfo(service) {
   const availableAmount = Math.max(0, remaining);
   const additionalUnits = service.price > 0 ? Math.floor(availableAmount / service.price) : 0;
   const item = state.items.find(entry => entry.code === service.code);
-  const calcMode = getCalculationMode(item);
-
-  if (calcMode === 'single') {
-    return {
-      calcMode,
-      remaining,
-      availableAmount,
-      additionalUnits,
-      additionalWeeklyQty: 0,
-      additionalMonthlyQty: additionalUnits,
-      additionalCost: additionalUnits * service.price,
-    };
-  }
-
-  const currentWeeklyQty = Math.max(0, Math.floor(Number(item?.weeklyQty) || 0));
+  const currentWeeklyQty = getWeeklyQty(item);
   const currentEstimatedMonthlyQty = estimateMonthlyQty(currentWeeklyQty);
+
   let additionalWeeklyQty = 0;
   let additionalMonthlyQty = 0;
 
@@ -204,25 +195,25 @@ function getCapacityInfo(service) {
   }
 
   return {
-    calcMode,
     remaining,
     availableAmount,
     additionalUnits,
     additionalWeeklyQty,
     additionalMonthlyQty,
     additionalCost: additionalMonthlyQty * service.price,
+    additionalSingleCost: additionalUnits * service.price,
   };
 }
 
 function capacityMarkup(service) {
   const {
-    calcMode,
     remaining,
     availableAmount,
     additionalUnits,
     additionalWeeklyQty,
     additionalMonthlyQty,
     additionalCost,
+    additionalSingleCost,
   } = getCapacityInfo(service);
 
   if (remaining < 0) {
@@ -231,39 +222,28 @@ function capacityMarkup(service) {
   if (remaining === 0) {
     return `<span class="capacity-empty">目前核定額度已使用完畢，${service.code} 暫無可增加數量</span>`;
   }
-
-  if (calcMode === 'single') {
-    if (additionalUnits <= 0) {
-      return `<span class="capacity-empty">目前不足以再增加單次計算數量</span>`;
-    }
-    return `
-      <span class="capacity-weekly">本月約可再增加 <strong>+${additionalUnits}</strong> 單位</span>
-      <span class="capacity-monthly">約 ${money.format(additionalCost)} 元</span>
-    `;
+  if (additionalUnits <= 0) {
+    return `<span class="capacity-empty">剩餘 ${money.format(availableAmount)} 元，目前不足以再增加 ${service.code}</span>`;
   }
 
-  if (additionalUnits <= 0 || additionalWeeklyQty <= 0) {
-    return `
-      <span class="capacity-empty">剩餘 ${money.format(availableAmount)} 元，目前不足以再增加每週服務次數</span>
-      <span class="capacity-remaining">${service.code} 單價 ${money.format(service.price)} 元／單位</span>
-    `;
-  }
+  const weeklyLine = additionalWeeklyQty > 0
+    ? `<span class="capacity-weekly">每週約 <strong>+${additionalWeeklyQty}</strong> 次</span><span class="capacity-monthly">每月約 +${additionalMonthlyQty} 單位｜約 ${money.format(additionalCost)} 元</span>`
+    : `<span class="capacity-empty">目前不足以再增加完整的每週服務次數</span>`;
 
   return `
-    <span class="capacity-weekly">每週約 <strong>+${additionalWeeklyQty}</strong> 次</span>
-    <span class="capacity-monthly">每月約 +${additionalMonthlyQty} 單位｜約 ${money.format(additionalCost)} 元</span>
-    <span class="capacity-remaining">目前剩餘額度 ${money.format(availableAmount)} 元</span>
+    ${weeklyLine}
+    <span class="capacity-single">或單次備用最多 <strong>+${additionalUnits}</strong> 單位｜約 ${money.format(additionalSingleCost)} 元</span>
   `;
 }
 
 function approvedCapacityMarkup(service) {
   const {
-    calcMode,
     remaining,
     additionalUnits,
     additionalWeeklyQty,
     additionalMonthlyQty,
     additionalCost,
+    additionalSingleCost,
   } = getCapacityInfo(service);
 
   if (remaining < 0) {
@@ -272,27 +252,17 @@ function approvedCapacityMarkup(service) {
   if (remaining === 0) {
     return `<span class="capacity-empty">目前核定額度已使用完畢，${service.code} 暫無可增加數量</span>`;
   }
-
-  if (calcMode === 'single') {
-    if (additionalUnits <= 0) {
-      return `<span class="capacity-empty">目前不足以再增加單次計算數量</span>`;
-    }
-    return `
-      <span class="capacity-weekly">本月約可再增加 <strong>+${additionalUnits}</strong> 單位</span>
-      <span class="capacity-monthly">約 ${money.format(additionalCost)} 元</span>
-    `;
+  if (additionalUnits <= 0) {
+    return `<span class="capacity-empty">目前不足以再增加 ${service.code}</span>`;
   }
 
-  if (additionalUnits <= 0 || additionalWeeklyQty <= 0) {
-    return `
-      <span class="capacity-empty">目前不足以再增加每週服務次數</span>
-      <span class="capacity-remaining">${service.code} 單價 ${money.format(service.price)} 元／單位</span>
-    `;
-  }
+  const weeklyLine = additionalWeeklyQty > 0
+    ? `<span class="capacity-weekly">每週約 <strong>+${additionalWeeklyQty}</strong> 次</span><span class="capacity-monthly">每月約 +${additionalMonthlyQty} 單位｜約 ${money.format(additionalCost)} 元</span>`
+    : '';
 
   return `
-    <span class="capacity-weekly">每週約 <strong>+${additionalWeeklyQty}</strong> 次</span>
-    <span class="capacity-monthly">每月約 +${additionalMonthlyQty} 單位｜約 ${money.format(additionalCost)} 元</span>
+    ${weeklyLine}
+    <span class="capacity-single">單次備用最多 <strong>+${additionalUnits}</strong> 單位｜約 ${money.format(additionalSingleCost)} 元</span>
   `;
 }
 
@@ -302,12 +272,10 @@ function updateCapacityHints() {
     if (!service) return;
     const approvedView = hint.classList.contains('approved-capacity-hint');
     hint.innerHTML = approvedView ? approvedCapacityMarkup(service) : capacityMarkup(service);
-    const { calcMode, remaining, additionalUnits, additionalWeeklyQty } = getCapacityInfo(service);
-    const noCapacity = calcMode === 'single' ? additionalUnits <= 0 : additionalWeeklyQty <= 0;
-    hint.classList.toggle('capacity-none', remaining <= 0 || noCapacity);
+    const { remaining, additionalUnits } = getCapacityInfo(service);
+    hint.classList.toggle('capacity-none', remaining <= 0 || additionalUnits <= 0);
   });
 }
-
 
 
 function scrollToStep3() {
@@ -331,12 +299,8 @@ function escapeOverviewHtml(value) {
 function buildServiceOverviewHtml() {
   const identity = IDENTITIES[state.identity];
   const { budget, serviceTotal, copayTotal, remaining, usage } = calculateTotals();
-  const weeklyItems = state.items.filter(item => getCalculationMode(item) === 'weekly');
-  const singleItems = state.items.filter(item => getCalculationMode(item) === 'single');
-  const totalWeeklyQty = weeklyItems.reduce(
-    (sum, item) => sum + Math.max(0, Math.floor(Number(item.weeklyQty) || 0)),
-    0
-  );
+  const totalWeeklyQty = state.items.reduce((sum, item) => sum + getWeeklyQty(item), 0);
+  const totalSingleQty = state.items.reduce((sum, item) => sum + getSingleQty(item), 0);
   const totalMonthlyQty = state.items.reduce(
     (sum, item) => sum + Math.max(0, Math.floor(Number(item.qty) || 0)),
     0
@@ -346,22 +310,26 @@ function buildServiceOverviewHtml() {
     const service = getService(item.code);
     if (!service) return '';
 
-    const calcMode = getCalculationMode(item);
-    const isSingle = calcMode === 'single';
-    const weeklyQty = Math.max(0, Math.floor(Number(item.weeklyQty) || 0));
+    const weeklyQty = getWeeklyQty(item);
     const singleQty = getSingleQty(item);
+    const weeklyMonthlyQty = estimateMonthlyQty(weeklyQty);
     const monthlyQty = Math.max(0, Math.floor(Number(item.qty) || 0));
     const weekdayKeys = Array.isArray(item.days) ? item.days : [];
     const weekdayChips = WEEKDAYS.map(day => {
-      const active = !isSingle && weekdayKeys.includes(day.key);
+      const active = weekdayKeys.includes(day.key);
       return `<span class="day-chip${active ? ' active' : ''}">${escapeOverviewHtml(day.short)}</span>`;
     }).join('');
 
-    const weeklyShare = !isSingle && totalWeeklyQty > 0 ? (weeklyQty / totalWeeklyQty) * 100 : 0;
+    const weeklyShare = totalWeeklyQty > 0 ? (weeklyQty / totalWeeklyQty) * 100 : 0;
     const unitCopay = getCopayPerUnit(service);
     const itemCopay = unitCopay * monthlyQty;
-    const mainNumber = isSingle ? singleQty : weeklyQty;
-    const mainUnit = isSingle ? '單位／月' : '次／週';
+    const configLabel = weeklyQty > 0 && singleQty > 0
+      ? '每週固定＋單次備用'
+      : weeklyQty > 0
+        ? '每週固定'
+        : singleQty > 0
+          ? '單次備用'
+          : '尚未設定';
 
     return `
       <article class="service-overview-card">
@@ -371,19 +339,27 @@ function buildServiceOverviewHtml() {
             <div class="service-code">${escapeOverviewHtml(service.code)}</div>
             <h2>${escapeOverviewHtml(service.name)}</h2>
           </div>
-          <div class="weekly-number${isSingle ? ' single-number' : ''}">
-            <strong>${mainNumber}</strong>
-            <span>${mainUnit}</span>
+          <div class="weekly-number">
+            <strong>${weeklyQty}</strong>
+            <span>次／週</span>
           </div>
         </div>
 
         <div class="service-detail-grid">
           <div class="detail-box">
-            <span>計算方式</span>
-            <strong>${isSingle ? '單次計算' : '每週計算'}</strong>
+            <span>服務配置</span>
+            <strong>${configLabel}</strong>
           </div>
           <div class="detail-box">
-            <span>預估每月</span>
+            <span>固定月估</span>
+            <strong>${weeklyMonthlyQty} 單位</strong>
+          </div>
+          <div class="detail-box single-detail-box">
+            <span>額外單次／備用</span>
+            <strong>+${singleQty} 單位</strong>
+          </div>
+          <div class="detail-box total-detail-box">
+            <span>本月合計</span>
             <strong>${monthlyQty} 單位</strong>
           </div>
           <div class="detail-box unit-copay-detail-box">
@@ -396,19 +372,20 @@ function buildServiceOverviewHtml() {
           </div>
         </div>
 
-        ${isSingle ? `
-          <div class="single-overview-note">本項直接以本月 ${singleQty} 單位計算，不套用每週 × 4.5 週換算。</div>
-        ` : `
-          <div class="weekday-block">
-            <span class="mini-label">服務星期</span>
-            <div class="day-row">${weekdayChips}</div>
-            ${weekdayKeys.length ? '' : '<p class="no-day">尚未指定服務星期</p>'}
-          </div>
+        <div class="weekday-block">
+          <span class="mini-label">固定服務星期</span>
+          <div class="day-row">${weekdayChips}</div>
+          ${weeklyQty > 0 && !weekdayKeys.length ? '<p class="no-day">尚未指定固定服務星期</p>' : ''}
+        </div>
+
+        ${singleQty > 0 ? `<div class="single-overview-note">本月另加 ${singleQty} 單位單次／備用服務，已與固定每週服務合併計入月總單位。</div>` : ''}
+
+        ${weeklyQty > 0 ? `
           <div class="share-block" aria-hidden="true">
             <div class="share-track"><div class="share-bar" style="width:${Math.min(100, weeklyShare).toFixed(1)}%"></div></div>
             <span>占每週總服務次數 ${weeklyShare.toFixed(0)}%</span>
           </div>
-        `}
+        ` : ''}
       </article>
     `;
   }).join('');
@@ -464,11 +441,14 @@ function buildServiceOverviewHtml() {
     .weekly-number { min-width:72px; text-align:right; }
     .weekly-number strong { display:block; color:var(--brand-dark); font-size:30px; line-height:.95; }
     .weekly-number span { display:block; margin-top:4px; color:var(--muted); font-size:11px; font-weight:800; }
-    .single-number strong { color:#735eb0; }
-    .service-detail-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin-top:13px; }
+    .service-detail-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-top:13px; }
     .detail-box { padding:10px 11px; border-radius:12px; background:#f7faff; border:1px solid #e1eaf5; }
     .detail-box span { display:block; color:var(--muted); font-size:10px; font-weight:800; }
     .detail-box strong { display:block; margin-top:3px; font-size:14px; }
+    .single-detail-box { background:#f7f3ff; border-color:#e1d8f6; }
+    .single-detail-box strong { color:#6b59a4; }
+    .total-detail-box { background:#eef4ff; border-color:#cfdef3; }
+    .total-detail-box strong { color:var(--brand-dark); }
     .unit-copay-detail-box { background:#f4f8ff; border-color:#d7e3f4; }
     .unit-copay-detail-box strong { color:#4f75ab; }
     .copay-detail-box { background:#eef4ff; border-color:#cfdef3; }
@@ -508,7 +488,7 @@ function buildServiceOverviewHtml() {
       <div class="big-grid">
         <div class="big-stat"><span>使用服務</span><strong>${state.items.length} 項</strong></div>
         <div class="big-stat"><span>每週總服務</span><strong>${totalWeeklyQty} 次</strong></div>
-        <div class="big-stat"><span>單次計算</span><strong>${singleItems.length} 項</strong></div>
+        <div class="big-stat"><span>單次備用</span><strong>${totalSingleQty} 單位</strong></div>
         <div class="big-stat"><span>預估每月</span><strong>${totalMonthlyQty} 單位</strong></div>
       </div>
       <div class="budget-row">
@@ -520,7 +500,7 @@ function buildServiceOverviewHtml() {
     </section>
     <section class="section-title"><p>SERVICE OVERVIEW</p><h2>服務項目</h2></section>
     <section class="service-list">${serviceRows}</section>
-    <p class="note">每週計算會依每週次數估算月單位；單次計算則直接以本月數量計入，不乘 4.5 週。</p>
+    <p class="note">每月合計單位＝每週固定次數 × 約 4.5 週（大月）＋本月額外單次／備用單位。</p>
   </main>
 </body>
 </html>`;
@@ -625,76 +605,67 @@ function scheduleDerivedRender() {
 function createWeeklyEditor(service, selectedItem) {
   const editor = document.createElement('div');
   editor.className = 'weekly-editor';
-  const calcMode = getCalculationMode(selectedItem);
-  const isSingle = calcMode === 'single';
+  const weeklyQty = getWeeklyQty(selectedItem);
   const singleQty = getSingleQty(selectedItem);
+  const weeklyMonthlyQty = estimateMonthlyQty(weeklyQty);
+  const totalMonthlyQty = weeklyMonthlyQty + singleQty;
 
   editor.innerHTML = `
-    <div class="calc-mode-switch" role="group" aria-label="${service.code} 計算方式">
-      <button type="button" class="calc-mode-btn${!isSingle ? ' active' : ''}" data-mode="weekly" aria-pressed="${!isSingle}">每週計算</button>
-      <button type="button" class="calc-mode-btn${isSingle ? ' active' : ''}" data-mode="single" aria-pressed="${isSingle}">單次計算</button>
+    <div class="editor-section-title">每週固定服務</div>
+    <div class="weekly-row">
+      <span class="weekly-label">一週次數</span>
+      <div class="weekly-control">
+        <input class="weekly-input" type="number" inputmode="numeric" min="0" step="1" value="${weeklyQty}" aria-label="${service.code} 一週服務次數" />
+        <span>次</span>
+      </div>
     </div>
-    ${isSingle ? `
-      <div class="weekly-row single-row">
-        <span class="weekly-label">本月單次數量</span>
-        <div class="weekly-control">
-          <input class="single-input" type="number" inputmode="numeric" min="0" step="1" value="${singleQty}" aria-label="${service.code} 本月單次數量" />
-          <span>單位</span>
-        </div>
+    <div class="monthly-estimate weekly-monthly-estimate" aria-live="polite">
+      固定服務預估每月 <strong>${weeklyMonthlyQty}</strong> 單位
+      <span>（每週次數 × 約 4.5 週（大月））</span>
+    </div>
+    <div class="weekday-editor">
+      <span class="weekday-label">服務星期</span>
+      <div class="weekday-chips" role="group" aria-label="${service.code} 服務星期">
+        ${WEEKDAYS.map(day => `<button type="button" class="weekday-chip${(selectedItem.days || []).includes(day.key) ? ' active' : ''}" data-day="${day.key}" aria-pressed="${(selectedItem.days || []).includes(day.key)}" title="${day.label}">${day.short}</button>`).join('')}
       </div>
-      <div class="monthly-estimate single-estimate" aria-live="polite">
-        本月直接計算 <strong>${singleQty}</strong> 單位
-        <span>（不乘 4.5 週）</span>
+    </div>
+
+    <div class="editor-divider"></div>
+
+    <div class="editor-section-title single-title">額外單次／備用</div>
+    <div class="weekly-row single-row">
+      <span class="weekly-label">本月額外數量</span>
+      <div class="weekly-control">
+        <input class="single-input" type="number" inputmode="numeric" min="0" step="1" value="${singleQty}" aria-label="${service.code} 本月單次數量" />
+        <span>單位</span>
       </div>
-      <div class="capacity-box">
-        <span class="capacity-title">目前額度還能增加</span>
-        <p class="capacity-hint approved-capacity-hint" data-code="${service.code}">${approvedCapacityMarkup(service)}</p>
-      </div>
-    ` : `
-      <div class="weekly-row">
-        <span class="weekly-label">一週次數</span>
-        <div class="weekly-control">
-          <input class="weekly-input" type="number" inputmode="numeric" min="0" step="1" value="${selectedItem.weeklyQty ?? 0}" aria-label="${service.code} 一週服務次數" />
-          <span>次</span>
-        </div>
-      </div>
-      <div class="monthly-estimate" aria-live="polite">
-        預估每月 <strong>${estimateMonthlyQty(selectedItem.weeklyQty ?? 0)}</strong> 單位
-        <span>（每週次數 × 約 4.5 週（大月））</span>
-      </div>
-      <div class="capacity-box">
-        <span class="capacity-title">目前額度還能增加</span>
-        <p class="capacity-hint approved-capacity-hint" data-code="${service.code}">${approvedCapacityMarkup(service)}</p>
-      </div>
-      <div class="weekday-editor">
-        <span class="weekday-label">服務星期</span>
-        <div class="weekday-chips" role="group" aria-label="${service.code} 服務星期">
-          ${WEEKDAYS.map(day => `<button type="button" class="weekday-chip${(selectedItem.days || []).includes(day.key) ? ' active' : ''}" data-day="${day.key}" aria-pressed="${(selectedItem.days || []).includes(day.key)}" title="${day.label}">${day.short}</button>`).join('')}
-        </div>
-      </div>
-    `}
+    </div>
+    <div class="monthly-estimate single-estimate" aria-live="polite">
+      額外單次直接加 <strong>${singleQty}</strong> 單位
+      <span>（不乘 4.5 週）</span>
+    </div>
+
+    <div class="combined-total" aria-live="polite">
+      <span>本月合計</span>
+      <strong>${totalMonthlyQty} 單位</strong>
+      <small>${weeklyMonthlyQty} 固定月估 + ${singleQty} 單次／備用</small>
+    </div>
+
+    <div class="capacity-box">
+      <span class="capacity-title">目前額度還能增加</span>
+      <p class="capacity-hint approved-capacity-hint" data-code="${service.code}">${approvedCapacityMarkup(service)}</p>
+    </div>
   `;
 
-  editor.querySelectorAll('.calc-mode-btn').forEach(modeButton => {
-    bindFastTap(modeButton, event => {
-      event.stopPropagation();
-      setCalculationMode(service.code, modeButton.dataset.mode);
-    });
-  });
-
   const weeklyInput = editor.querySelector('.weekly-input');
-  if (weeklyInput) {
-    weeklyInput.addEventListener('click', event => event.stopPropagation());
-    weeklyInput.addEventListener('input', event => updateWeeklyQty(service.code, event.target.value));
-    weeklyInput.addEventListener('change', event => updateWeeklyQty(service.code, event.target.value));
-  }
+  weeklyInput.addEventListener('click', event => event.stopPropagation());
+  weeklyInput.addEventListener('input', event => updateWeeklyQty(service.code, event.target.value));
+  weeklyInput.addEventListener('change', event => updateWeeklyQty(service.code, event.target.value));
 
   const singleInput = editor.querySelector('.single-input');
-  if (singleInput) {
-    singleInput.addEventListener('click', event => event.stopPropagation());
-    singleInput.addEventListener('input', event => updateSingleQty(service.code, event.target.value));
-    singleInput.addEventListener('change', event => updateSingleQty(service.code, event.target.value));
-  }
+  singleInput.addEventListener('click', event => event.stopPropagation());
+  singleInput.addEventListener('input', event => updateSingleQty(service.code, event.target.value));
+  singleInput.addEventListener('change', event => updateSingleQty(service.code, event.target.value));
 
   editor.querySelectorAll('.weekday-chip').forEach(dayButton => {
     bindFastTap(dayButton, event => {
@@ -783,92 +754,79 @@ function toggleService(code) {
 function addService(code) {
   if (state.items.some(item => item.code === code)) return;
 
-  state.items.push({ code, qty: 0, weeklyQty: 0, singleQty: 1, days: [], calcMode: 'weekly' });
+  state.items.push({ code, qty: 0, weeklyQty: 0, singleQty: 0, days: [] });
   saveState();
-
-  // v11：只更新剛剛點選的服務卡，不再重畫整個服務清單。
   syncVisibleServiceCard(code);
   scheduleDerivedRender();
-
-  // 保留使用者目前瀏覽位置，不自動捲動或搶焦點，方便繼續選其他服務。
 }
 
 function removeService(code) {
   state.items = state.items.filter(item => item.code !== code);
   saveState();
-
-  // v11：取消選取也只縮回目前卡片，減少手機端重排與延遲感。
   syncVisibleServiceCard(code);
   scheduleDerivedRender();
 }
 
-function setCalculationMode(code, mode) {
+function updateCombinedEditorDisplay(code) {
   const item = state.items.find(entry => entry.code === code);
-  if (!item || !['weekly', 'single'].includes(mode)) return;
+  if (!item) return;
+  const editor = Array.from(document.querySelectorAll('.weekly-editor')).find(node =>
+    node.querySelector(`[aria-label="${code} 一週服務次數"]`) ||
+    node.querySelector(`[aria-label="${code} 本月單次數量"]`)
+  );
+  if (!editor) return;
 
-  item.calcMode = mode;
-  if (mode === 'single') {
-    if (getSingleQty(item) <= 0) item.singleQty = 1;
-    item.qty = getSingleQty(item);
-  } else {
-    item.qty = estimateMonthlyQty(item.weeklyQty);
-  }
-
-  saveState();
-  syncVisibleServiceCard(code);
-  scheduleDerivedRender();
+  const weeklyMonthlyQty = estimateMonthlyQty(getWeeklyQty(item));
+  const singleQty = getSingleQty(item);
+  const total = weeklyMonthlyQty + singleQty;
+  const weeklyEstimate = editor.querySelector('.weekly-monthly-estimate strong');
+  const singleEstimate = editor.querySelector('.single-estimate strong');
+  const totalStrong = editor.querySelector('.combined-total strong');
+  const totalSmall = editor.querySelector('.combined-total small');
+  if (weeklyEstimate) weeklyEstimate.textContent = String(weeklyMonthlyQty);
+  if (singleEstimate) singleEstimate.textContent = String(singleQty);
+  if (totalStrong) totalStrong.textContent = `${total} 單位`;
+  if (totalSmall) totalSmall.textContent = `${weeklyMonthlyQty} 固定月估 + ${singleQty} 單次／備用`;
 }
 
 function updateSingleQty(code, value) {
   const item = state.items.find(entry => entry.code === code);
   if (!item) return;
 
-  item.calcMode = 'single';
   item.singleQty = Math.max(0, Math.floor(Number(value) || 0));
-  item.qty = item.singleQty;
+  item.qty = getMonthlyQty(item);
   saveState();
-
-  const input = Array.from(document.querySelectorAll('.single-input'))
-    .find(el => el.getAttribute('aria-label') === `${code} 本月單次數量`);
-  const estimate = input?.closest('.weekly-editor')?.querySelector('.single-estimate strong');
-  if (estimate) estimate.textContent = String(item.singleQty);
-
+  updateCombinedEditorDisplay(code);
   scheduleDerivedRender();
 }
 
 function updateQty(code, value) {
-  const item = state.items.find(item => item.code === code);
+  const item = state.items.find(entry => entry.code === code);
   if (!item) return;
-  item.qty = Math.max(0, Math.floor(Number(value) || 0));
-  if (getCalculationMode(item) === 'single') {
-    item.singleQty = item.qty;
-    syncVisibleServiceCard(code);
-  }
+
+  const requestedTotal = Math.max(0, Math.floor(Number(value) || 0));
+  const weeklyMonthlyQty = estimateMonthlyQty(getWeeklyQty(item));
+  item.singleQty = Math.max(0, requestedTotal - weeklyMonthlyQty);
+  item.qty = weeklyMonthlyQty + item.singleQty;
   saveState();
+  syncVisibleServiceCard(code);
   renderApproved();
   renderTotals();
 }
 
 function updateWeeklyQty(code, value) {
-  const item = state.items.find(item => item.code === code);
+  const item = state.items.find(entry => entry.code === code);
   if (!item) return;
 
-  item.calcMode = 'weekly';
   item.weeklyQty = Math.max(0, Math.floor(Number(value) || 0));
-  item.qty = estimateMonthlyQty(item.weeklyQty);
+  item.qty = getMonthlyQty(item);
   saveState();
-
-  // 不重繪整個服務清單，避免使用者輸入時游標／畫面跳動。
-  const input = Array.from(document.querySelectorAll('.weekly-input'))
-    .find(el => el.getAttribute('aria-label') === `${code} 一週服務次數`);
-  const estimate = input?.closest('.weekly-editor')?.querySelector('.monthly-estimate strong');
-  if (estimate) estimate.textContent = String(item.qty);
-
+  updateCombinedEditorDisplay(code);
   scheduleDerivedRender();
 }
 
 function toggleWeekday(code, dayKey) {
-  const item = state.items.find(item => item.code === code);
+  const item = state.items.find(entry => entry.code === code);
   if (!item || !WEEKDAYS.some(day => day.key === dayKey)) return false;
 
   if (!Array.isArray(item.days)) item.days = [];
@@ -883,20 +841,14 @@ function toggleWeekday(code, dayKey) {
     });
   }
 
-  // v5：點選服務星期時，自動用「已選星期數」帶入一週次數。
-  // 例如選一、三、五 => 3 次；選一～五 => 5 次。
-  // 使用者之後仍可直接在「一週次數」欄位手動改成其他數字。
-  item.calcMode = 'weekly';
   item.weeklyQty = item.days.length;
-  item.qty = estimateMonthlyQty(item.weeklyQty);
+  item.qty = getMonthlyQty(item);
   saveState();
 
-  // 只更新目前卡片中的數字，不重畫整個服務清單，避免手機畫面跳動。
   const input = Array.from(document.querySelectorAll('.weekly-input'))
     .find(el => el.getAttribute('aria-label') === `${code} 一週服務次數`);
   if (input) input.value = String(item.weeklyQty);
-  const estimate = input?.closest('.weekly-editor')?.querySelector('.monthly-estimate strong');
-  if (estimate) estimate.textContent = String(item.qty);
+  updateCombinedEditorDisplay(code);
 
   scheduleDerivedRender();
   return item.days.includes(dayKey);
@@ -925,11 +877,17 @@ function renderApproved() {
     const service = getService(item.code);
     if (!service) return;
 
-    const isSingle = getCalculationMode(item) === 'single';
+    const weeklyQty = getWeeklyQty(item);
+    const singleQty = getSingleQty(item);
+    const weeklyMonthlyQty = estimateMonthlyQty(weeklyQty);
+    const totalQty = weeklyMonthlyQty + singleQty;
     const weekdaySummary = getWeekdaySummary(item.days || []);
-    const summaryText = isSingle
-      ? `單次計算｜本月 ${getSingleQty(item)} 單位`
-      : `每週 ${item.weeklyQty ?? 0} 次${weekdaySummary ? `｜${weekdaySummary}` : ''}｜預估每月 ${item.qty} 單位`;
+
+    const summaryParts = [];
+    if (weeklyQty > 0) summaryParts.push(`每週 ${weeklyQty} 次${weekdaySummary ? `｜${weekdaySummary}` : ''}｜固定月估 ${weeklyMonthlyQty} 單位`);
+    if (singleQty > 0) summaryParts.push(`單次備用 +${singleQty} 單位`);
+    if (!summaryParts.length) summaryParts.push('尚未設定服務次數');
+    const summaryText = `${summaryParts.join('｜')}｜本月合計 ${totalQty} 單位`;
 
     const wrapper = document.createElement('article');
     wrapper.className = 'approved-item';
@@ -944,10 +902,11 @@ function renderApproved() {
       </div>
       <div class="approved-controls">
         <label class="qty-field">
-          <span>${isSingle ? '本月單次計算數量' : '預估／核定月單位數'}</span>
-          <input class="qty-input" type="number" inputmode="numeric" min="0" step="1" value="${item.qty}" aria-label="${service.code} 核定單位數" />
+          <span>本月合計單位數</span>
+          <input class="qty-input" type="number" inputmode="numeric" min="${weeklyMonthlyQty}" step="1" value="${totalQty}" aria-label="${service.code} 核定單位數" />
+          <small class="qty-helper">固定服務 ${weeklyMonthlyQty} + 單次備用 ${singleQty}</small>
         </label>
-        <div class="item-subtotal"><span>小計</span><strong>${money.format(service.price * item.qty)} 元</strong></div>
+        <div class="item-subtotal"><span>小計</span><strong>${money.format(service.price * totalQty)} 元</strong></div>
       </div>
       <div class="capacity-box approved-capacity-box">
         <span class="capacity-title">目前額度還能增加</span>
