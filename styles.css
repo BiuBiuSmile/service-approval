@@ -816,3 +816,14 @@ main { padding: 14px; }
   .service-main:hover { background: #f2f7ff; }
   .ghost-button:hover, .filter-chip:not(.active):hover { background: var(--surface-soft); }
 }
+
+
+/* v24：每項服務可切換「每週計算」與「單次計算」。 */
+.calc-mode-switch { display:grid; grid-template-columns:1fr 1fr; gap:6px; padding:4px; border:1px solid #d7e3f2; border-radius:12px; background:#f7faff; }
+.calc-mode-btn { min-height:38px; border:0; border-radius:9px; background:transparent; color:#6f8198; font-weight:900; cursor:pointer; -webkit-tap-highlight-color:transparent; touch-action:manipulation; transition:background .14s ease,color .14s ease,box-shadow .14s ease,transform .08s ease; }
+.calc-mode-btn:active,.calc-mode-btn.touch-pressed { transform:scale(.98); }
+.calc-mode-btn.active { background:var(--brand); color:#fff; box-shadow:0 5px 12px rgba(95,143,214,.18); }
+.single-input { width:82px; min-height:40px; border:1px solid #bfd1ea; border-radius:10px; background:#fff; color:var(--text); padding:0 8px; text-align:center; font-size:16px; font-weight:800; outline:none; }
+.single-input:focus { border-color:var(--brand); box-shadow:0 0 0 3px rgba(95,143,214,.14); }
+.single-estimate { padding:9px 10px; border-radius:10px; background:#f7f3ff; border:1px solid #e2d9f6; color:#6d5a91; }
+.single-estimate strong { color:#6b59a4; }

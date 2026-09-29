@@ -140,6 +140,14 @@ function estimateMonthlyQty(weeklyQty) {
   return Math.round(weekly * WEEKS_PER_MONTH);
 }
 
+function getCalculationMode(item) {
+  return item?.calcMode === 'single' ? 'single' : 'weekly';
+}
+
+function getSingleQty(item) {
+  return Math.max(0, Math.floor(Number(item?.singleQty) || 0));
+}
+
 function calculateTotals() {
   const budget = LEVEL_BUDGETS[state.level];
   let serviceTotal = 0;
@@ -166,14 +174,25 @@ function getCapacityInfo(service) {
   const availableAmount = Math.max(0, remaining);
   const additionalUnits = service.price > 0 ? Math.floor(availableAmount / service.price) : 0;
   const item = state.items.find(entry => entry.code === service.code);
+  const calcMode = getCalculationMode(item);
+
+  if (calcMode === 'single') {
+    return {
+      calcMode,
+      remaining,
+      availableAmount,
+      additionalUnits,
+      additionalWeeklyQty: 0,
+      additionalMonthlyQty: additionalUnits,
+      additionalCost: additionalUnits * service.price,
+    };
+  }
+
   const currentWeeklyQty = Math.max(0, Math.floor(Number(item?.weeklyQty) || 0));
   const currentEstimatedMonthlyQty = estimateMonthlyQty(currentWeeklyQty);
-
   let additionalWeeklyQty = 0;
   let additionalMonthlyQty = 0;
 
-  // v14：把「還可增加幾單位」換算成居督更直覺的「每週還可增加幾次」。
-  // 以目前每週次數為基準，逐次增加，直到換算後的月增量會超過剩餘額度可負擔的單位數。
   for (let delta = 1; delta <= 1000; delta += 1) {
     const nextEstimatedMonthlyQty = estimateMonthlyQty(currentWeeklyQty + delta);
     const monthlyDelta = Math.max(0, nextEstimatedMonthlyQty - currentEstimatedMonthlyQty);
@@ -182,20 +201,20 @@ function getCapacityInfo(service) {
     additionalMonthlyQty = monthlyDelta;
   }
 
-  const additionalCost = additionalMonthlyQty * service.price;
-
   return {
+    calcMode,
     remaining,
     availableAmount,
     additionalUnits,
     additionalWeeklyQty,
     additionalMonthlyQty,
-    additionalCost,
+    additionalCost: additionalMonthlyQty * service.price,
   };
 }
 
 function capacityMarkup(service) {
   const {
+    calcMode,
     remaining,
     availableAmount,
     additionalUnits,
@@ -205,11 +224,22 @@ function capacityMarkup(service) {
   } = getCapacityInfo(service);
 
   if (remaining < 0) {
-    return `<span class="capacity-empty">目前已超出核定額度，${service.code} 暫無可增加次數</span>`;
+    return `<span class="capacity-empty">目前已超出核定額度，${service.code} 暫無可增加數量</span>`;
   }
   if (remaining === 0) {
-    return `<span class="capacity-empty">目前核定額度已使用完畢，${service.code} 暫無可增加次數</span>`;
+    return `<span class="capacity-empty">目前核定額度已使用完畢，${service.code} 暫無可增加數量</span>`;
   }
+
+  if (calcMode === 'single') {
+    if (additionalUnits <= 0) {
+      return `<span class="capacity-empty">目前不足以再增加單次計算數量</span>`;
+    }
+    return `
+      <span class="capacity-weekly">本月約可再增加 <strong>+${additionalUnits}</strong> 單位</span>
+      <span class="capacity-monthly">約 ${money.format(additionalCost)} 元</span>
+    `;
+  }
+
   if (additionalUnits <= 0 || additionalWeeklyQty <= 0) {
     return `
       <span class="capacity-empty">剩餘 ${money.format(availableAmount)} 元，目前不足以再增加每週服務次數</span>
@@ -224,9 +254,9 @@ function capacityMarkup(service) {
   `;
 }
 
-
 function approvedCapacityMarkup(service) {
   const {
+    calcMode,
     remaining,
     additionalUnits,
     additionalWeeklyQty,
@@ -235,11 +265,22 @@ function approvedCapacityMarkup(service) {
   } = getCapacityInfo(service);
 
   if (remaining < 0) {
-    return `<span class="capacity-empty">目前已超出核定額度，${service.code} 暫無可增加次數</span>`;
+    return `<span class="capacity-empty">目前已超出核定額度，${service.code} 暫無可增加數量</span>`;
   }
   if (remaining === 0) {
-    return `<span class="capacity-empty">目前核定額度已使用完畢，${service.code} 暫無可增加次數</span>`;
+    return `<span class="capacity-empty">目前核定額度已使用完畢，${service.code} 暫無可增加數量</span>`;
   }
+
+  if (calcMode === 'single') {
+    if (additionalUnits <= 0) {
+      return `<span class="capacity-empty">目前不足以再增加單次計算數量</span>`;
+    }
+    return `
+      <span class="capacity-weekly">本月約可再增加 <strong>+${additionalUnits}</strong> 單位</span>
+      <span class="capacity-monthly">約 ${money.format(additionalCost)} 元</span>
+    `;
+  }
+
   if (additionalUnits <= 0 || additionalWeeklyQty <= 0) {
     return `
       <span class="capacity-empty">目前不足以再增加每週服務次數</span>
@@ -259,8 +300,9 @@ function updateCapacityHints() {
     if (!service) return;
     const approvedView = hint.classList.contains('approved-capacity-hint');
     hint.innerHTML = approvedView ? approvedCapacityMarkup(service) : capacityMarkup(service);
-    const { remaining, additionalWeeklyQty } = getCapacityInfo(service);
-    hint.classList.toggle('capacity-none', remaining <= 0 || additionalWeeklyQty <= 0);
+    const { calcMode, remaining, additionalUnits, additionalWeeklyQty } = getCapacityInfo(service);
+    const noCapacity = calcMode === 'single' ? additionalUnits <= 0 : additionalWeeklyQty <= 0;
+    hint.classList.toggle('capacity-none', remaining <= 0 || noCapacity);
   });
 }
 
@@ -287,7 +329,9 @@ function escapeOverviewHtml(value) {
 function buildServiceOverviewHtml() {
   const identity = IDENTITIES[state.identity];
   const { budget, serviceTotal, copayTotal, remaining, usage } = calculateTotals();
-  const totalWeeklyQty = state.items.reduce(
+  const weeklyItems = state.items.filter(item => getCalculationMode(item) === 'weekly');
+  const singleItems = state.items.filter(item => getCalculationMode(item) === 'single');
+  const totalWeeklyQty = weeklyItems.reduce(
     (sum, item) => sum + Math.max(0, Math.floor(Number(item.weeklyQty) || 0)),
     0
   );
@@ -300,16 +344,21 @@ function buildServiceOverviewHtml() {
     const service = getService(item.code);
     if (!service) return '';
 
+    const calcMode = getCalculationMode(item);
+    const isSingle = calcMode === 'single';
     const weeklyQty = Math.max(0, Math.floor(Number(item.weeklyQty) || 0));
+    const singleQty = getSingleQty(item);
     const monthlyQty = Math.max(0, Math.floor(Number(item.qty) || 0));
     const weekdayKeys = Array.isArray(item.days) ? item.days : [];
     const weekdayChips = WEEKDAYS.map(day => {
-      const active = weekdayKeys.includes(day.key);
+      const active = !isSingle && weekdayKeys.includes(day.key);
       return `<span class="day-chip${active ? ' active' : ''}">${escapeOverviewHtml(day.short)}</span>`;
     }).join('');
 
-    const weeklyShare = totalWeeklyQty > 0 ? (weeklyQty / totalWeeklyQty) * 100 : 0;
+    const weeklyShare = !isSingle && totalWeeklyQty > 0 ? (weeklyQty / totalWeeklyQty) * 100 : 0;
     const itemCopay = getCopayPerUnit(service) * monthlyQty;
+    const mainNumber = isSingle ? singleQty : weeklyQty;
+    const mainUnit = isSingle ? '單位／月' : '次／週';
 
     return `
       <article class="service-overview-card">
@@ -319,16 +368,16 @@ function buildServiceOverviewHtml() {
             <div class="service-code">${escapeOverviewHtml(service.code)}</div>
             <h2>${escapeOverviewHtml(service.name)}</h2>
           </div>
-          <div class="weekly-number">
-            <strong>${weeklyQty}</strong>
-            <span>次／週</span>
+          <div class="weekly-number${isSingle ? ' single-number' : ''}">
+            <strong>${mainNumber}</strong>
+            <span>${mainUnit}</span>
           </div>
         </div>
 
         <div class="service-detail-grid">
           <div class="detail-box">
-            <span>每週服務</span>
-            <strong>${weeklyQty} 次</strong>
+            <span>計算方式</span>
+            <strong>${isSingle ? '單次計算' : '每週計算'}</strong>
           </div>
           <div class="detail-box">
             <span>預估每月</span>
@@ -340,16 +389,19 @@ function buildServiceOverviewHtml() {
           </div>
         </div>
 
-        <div class="weekday-block">
-          <span class="mini-label">服務星期</span>
-          <div class="day-row">${weekdayChips}</div>
-          ${weekdayKeys.length ? '' : '<p class="no-day">尚未指定服務星期</p>'}
-        </div>
-
-        <div class="share-block" aria-hidden="true">
-          <div class="share-track"><div class="share-bar" style="width:${Math.min(100, weeklyShare).toFixed(1)}%"></div></div>
-          <span>占每週總服務次數 ${weeklyShare.toFixed(0)}%</span>
-        </div>
+        ${isSingle ? `
+          <div class="single-overview-note">本項直接以本月 ${singleQty} 單位計算，不套用每週 × 4.5 週換算。</div>
+        ` : `
+          <div class="weekday-block">
+            <span class="mini-label">服務星期</span>
+            <div class="day-row">${weekdayChips}</div>
+            ${weekdayKeys.length ? '' : '<p class="no-day">尚未指定服務星期</p>'}
+          </div>
+          <div class="share-block" aria-hidden="true">
+            <div class="share-track"><div class="share-bar" style="width:${Math.min(100, weeklyShare).toFixed(1)}%"></div></div>
+            <span>占每週總服務次數 ${weeklyShare.toFixed(0)}%</span>
+          </div>
+        `}
       </article>
     `;
   }).join('');
@@ -367,51 +419,22 @@ function buildServiceOverviewHtml() {
   <meta name="theme-color" content="#5f8fd6">
   <title>服務項目總覽</title>
   <style>
-    :root {
-      color-scheme: light;
-      --bg:#f4f7fc;
-      --surface:#fff;
-      --surface-soft:#edf4ff;
-      --text:#1d3550;
-      --muted:#6f8198;
-      --line:#d7e2ef;
-      --brand:#5f8fd6;
-      --brand-dark:#426fa8;
-      --brand-soft:#e6efff;
-    }
+    :root { color-scheme:light; --bg:#f4f7fc; --surface:#fff; --surface-soft:#edf4ff; --text:#1d3550; --muted:#6f8198; --line:#d7e2ef; --brand:#5f8fd6; --brand-dark:#426fa8; --brand-soft:#e6efff; }
     * { box-sizing:border-box; }
     html { background:var(--bg); }
-    body {
-      margin:0;
-      color:var(--text);
-      background:
-        radial-gradient(circle at top right, rgba(95,143,214,.18), transparent 36%),
-        radial-gradient(circle at top left, rgba(255,238,214,.28), transparent 25%),
-        var(--bg);
-      font-family:Inter,"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
-    }
+    body { margin:0; color:var(--text); background:radial-gradient(circle at top right,rgba(95,143,214,.18),transparent 36%),radial-gradient(circle at top left,rgba(255,238,214,.28),transparent 25%),var(--bg); font-family:Inter,"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif; }
     .page { width:min(100%,760px); margin:0 auto; padding:18px 14px 40px; }
-    .top {
-      display:flex; align-items:flex-start; justify-content:space-between; gap:12px;
-      padding:8px 2px 16px;
-    }
+    .top { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:8px 2px 16px; }
     .eyebrow { margin:0 0 4px; color:var(--brand); font-size:12px; font-weight:900; letter-spacing:.08em; }
     h1 { margin:0; font-size:28px; line-height:1.15; }
     .top-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
-    .action-btn {
-      flex:0 0 auto; border:1px solid #c4d5eb; border-radius:12px; background:#fff;
-      color:var(--brand-dark); padding:10px 12px; font:inherit; font-size:12px; font-weight:900; cursor:pointer;
-      -webkit-tap-highlight-color:transparent; touch-action:manipulation;
-    }
+    .action-btn { flex:0 0 auto; border:1px solid #c4d5eb; border-radius:12px; background:#fff; color:var(--brand-dark); padding:10px 12px; font:inherit; font-size:12px; font-weight:900; cursor:pointer; -webkit-tap-highlight-color:transparent; touch-action:manipulation; }
     .action-btn:active { transform:scale(.98); }
     .return-btn { border-color:var(--brand); background:var(--brand); color:#fff; }
-    .summary-card {
-      padding:17px; border:1px solid var(--line); border-radius:20px; background:rgba(255,255,255,.94);
-      box-shadow:0 14px 35px rgba(62,95,138,.09);
-    }
+    .summary-card { padding:17px; border:1px solid var(--line); border-radius:20px; background:rgba(255,255,255,.94); box-shadow:0 14px 35px rgba(62,95,138,.09); }
     .identity-line { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; }
     .badge { padding:7px 10px; border-radius:999px; background:var(--brand-soft); color:var(--brand-dark); font-size:12px; font-weight:900; }
-    .big-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:9px; }
+    .big-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:9px; }
     .big-stat { padding:13px 10px; border-radius:15px; background:var(--surface-soft); text-align:center; }
     .big-stat span { display:block; color:var(--muted); font-size:11px; font-weight:800; }
     .big-stat strong { display:block; margin-top:4px; color:var(--brand-dark); font-size:22px; }
@@ -426,20 +449,15 @@ function buildServiceOverviewHtml() {
     .section-title p { margin:0 0 3px; color:var(--brand); font-size:11px; font-weight:900; letter-spacing:.08em; }
     .section-title h2 { margin:0; font-size:19px; }
     .service-list { display:grid; gap:11px; }
-    .service-overview-card {
-      padding:15px; border:1px solid var(--line); border-radius:18px; background:#fff;
-      box-shadow:0 9px 24px rgba(62,95,138,.06);
-    }
+    .service-overview-card { padding:15px; border:1px solid var(--line); border-radius:18px; background:#fff; box-shadow:0 9px 24px rgba(62,95,138,.06); }
     .service-card-head { display:grid; grid-template-columns:auto 1fr auto; gap:10px; align-items:center; }
-    .service-index {
-      width:28px; height:28px; display:grid; place-items:center; border-radius:9px;
-      background:#f1f5fb; color:var(--muted); font-size:11px; font-weight:900;
-    }
+    .service-index { width:28px; height:28px; display:grid; place-items:center; border-radius:9px; background:#f1f5fb; color:var(--muted); font-size:11px; font-weight:900; }
     .service-title-wrap h2 { margin:2px 0 0; font-size:16px; }
     .service-code { color:var(--brand); font-size:12px; font-weight:900; }
     .weekly-number { min-width:72px; text-align:right; }
     .weekly-number strong { display:block; color:var(--brand-dark); font-size:30px; line-height:.95; }
     .weekly-number span { display:block; margin-top:4px; color:var(--muted); font-size:11px; font-weight:800; }
+    .single-number strong { color:#735eb0; }
     .service-detail-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-top:13px; }
     .detail-box { padding:10px 11px; border-radius:12px; background:#f7faff; border:1px solid #e1eaf5; }
     .detail-box span { display:block; color:var(--muted); font-size:10px; font-weight:800; }
@@ -449,56 +467,29 @@ function buildServiceOverviewHtml() {
     .weekday-block { margin-top:13px; }
     .mini-label { display:block; margin-bottom:7px; color:var(--muted); font-size:11px; font-weight:900; }
     .day-row { display:grid; grid-template-columns:repeat(7,1fr); gap:5px; }
-    .day-chip {
-      min-height:32px; display:grid; place-items:center; border:1px solid #d3dfed; border-radius:9px;
-      color:#8a9aad; background:#fff; font-size:12px; font-weight:900;
-    }
+    .day-chip { min-height:32px; display:grid; place-items:center; border:1px solid #d3dfed; border-radius:9px; color:#8a9aad; background:#fff; font-size:12px; font-weight:900; }
     .day-chip.active { border-color:var(--brand); background:var(--brand); color:#fff; }
     .no-day { margin:7px 0 0; color:#9a6d63; font-size:11px; font-weight:800; }
     .share-block { display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center; margin-top:12px; }
     .share-track { height:6px; overflow:hidden; border-radius:999px; background:#e8eef6; }
     .share-bar { height:100%; border-radius:inherit; background:#9fc4ff; }
     .share-block span { color:var(--muted); font-size:10px; font-weight:800; }
+    .single-overview-note { margin-top:13px; padding:10px 11px; border-radius:12px; background:#f7f3ff; border:1px solid #e1d8f6; color:#6d5a91; font-size:11px; font-weight:800; line-height:1.5; }
     .note { margin:18px 4px 0; color:var(--muted); font-size:11px; line-height:1.6; text-align:center; }
-    @media (max-width:420px) {
-      .page { padding-left:10px; padding-right:10px; }
-      .top { align-items:flex-start; }
-      .top-actions { max-width:175px; gap:6px; }
-      .action-btn { padding:9px 10px; font-size:11px; }
-      h1 { font-size:24px; }
-      .big-grid { grid-template-columns:1fr 1fr; }
-      .big-stat:last-child { grid-column:1 / -1; }
-      .service-card-head { grid-template-columns:auto 1fr auto; }
-      .service-detail-grid { grid-template-columns:1fr 1fr; }
-      .copay-detail-box { grid-column:1 / -1; }
-      .weekly-number strong { font-size:26px; }
-    }
-    @media screen and (min-width: 1024px) {
-      .page { width:min(100%,1200px); padding:28px 32px 48px; }
-      .service-list { grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; }
-      .summary-card { padding:24px; }
-    }
-    @media print {
-      body { background:#fff; }
-      .page { width:100%; max-width:none; padding:0; }
-      .top-actions { display:none; }
-      .summary-card,.service-overview-card { box-shadow:none; break-inside:avoid; }
-    }
+    @media (max-width:520px) { .page { padding-left:10px; padding-right:10px; } .top { align-items:flex-start; } .top-actions { max-width:175px; gap:6px; } .action-btn { padding:9px 10px; font-size:11px; } h1 { font-size:24px; } .big-grid { grid-template-columns:1fr 1fr; } .service-detail-grid { grid-template-columns:1fr 1fr; } .copay-detail-box { grid-column:1 / -1; } .weekly-number strong { font-size:26px; } }
+    @media screen and (min-width:1024px) { .page { width:min(100%,1200px); padding:28px 32px 48px; } .service-list { grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; } .summary-card { padding:24px; } }
+    @media print { body { background:#fff; } .page { width:100%; max-width:none; padding:0; } .top-actions { display:none; } .summary-card,.service-overview-card { box-shadow:none; break-inside:avoid; } }
   </style>
 </head>
 <body>
   <main class="page">
     <header class="top">
-      <div>
-        <p class="eyebrow">居督行動工具</p>
-        <h1>服務項目總覽</h1>
-      </div>
+      <div><p class="eyebrow">居督行動工具</p><h1>服務項目總覽</h1></div>
       <div class="top-actions">
         <button class="action-btn return-btn" type="button" onclick="window.close()">返回服務項目核定工具</button>
         <button class="action-btn" type="button" onclick="window.print()">列印／儲存 PDF</button>
       </div>
     </header>
-
     <section class="summary-card">
       <div class="identity-line">
         <span class="badge">${escapeOverviewHtml(identity.label)}</span>
@@ -508,6 +499,7 @@ function buildServiceOverviewHtml() {
       <div class="big-grid">
         <div class="big-stat"><span>使用服務</span><strong>${state.items.length} 項</strong></div>
         <div class="big-stat"><span>每週總服務</span><strong>${totalWeeklyQty} 次</strong></div>
+        <div class="big-stat"><span>單次計算</span><strong>${singleItems.length} 項</strong></div>
         <div class="big-stat"><span>預估每月</span><strong>${totalMonthlyQty} 單位</strong></div>
       </div>
       <div class="budget-row">
@@ -517,14 +509,9 @@ function buildServiceOverviewHtml() {
         <div class="budget-line"><span>剩餘額度</span><strong>${remainingLabel}</strong></div>
       </div>
     </section>
-
-    <div class="section-title">
-      <p>SERVICE OVERVIEW</p>
-      <h2>每週服務項目</h2>
-    </div>
-
+    <section class="section-title"><p>SERVICE OVERVIEW</p><h2>服務項目</h2></section>
     <section class="service-list">${serviceRows}</section>
-    <p class="note">每月單位數依目前核定單設定顯示；服務星期僅呈現已勾選的星期。若每週次數曾手動修改，可能與勾選星期數不同。</p>
+    <p class="note">每週計算會依每週次數估算月單位；單次計算則直接以本月數量計入，不乘 4.5 週。</p>
   </main>
 </body>
 </html>`;
@@ -627,54 +614,80 @@ function scheduleDerivedRender() {
 }
 
 function createWeeklyEditor(service, selectedItem) {
-  const weeklyEditor = document.createElement('div');
-  weeklyEditor.className = 'weekly-editor';
-  weeklyEditor.innerHTML = `
-    <div class="weekly-row">
-      <span class="weekly-label">一週次數</span>
-      <div class="weekly-control">
-        <input
-          class="weekly-input"
-          type="number"
-          inputmode="numeric"
-          min="0"
-          step="1"
-          value="${selectedItem.weeklyQty ?? 0}"
-          aria-label="${service.code} 一週服務次數"
-        />
-        <span>次</span>
+  const editor = document.createElement('div');
+  editor.className = 'weekly-editor';
+  const calcMode = getCalculationMode(selectedItem);
+  const isSingle = calcMode === 'single';
+  const singleQty = getSingleQty(selectedItem);
+
+  editor.innerHTML = `
+    <div class="calc-mode-switch" role="group" aria-label="${service.code} 計算方式">
+      <button type="button" class="calc-mode-btn${!isSingle ? ' active' : ''}" data-mode="weekly" aria-pressed="${!isSingle}">每週計算</button>
+      <button type="button" class="calc-mode-btn${isSingle ? ' active' : ''}" data-mode="single" aria-pressed="${isSingle}">單次計算</button>
+    </div>
+    ${isSingle ? `
+      <div class="weekly-row single-row">
+        <span class="weekly-label">本月單次數量</span>
+        <div class="weekly-control">
+          <input class="single-input" type="number" inputmode="numeric" min="0" step="1" value="${singleQty}" aria-label="${service.code} 本月單次數量" />
+          <span>單位</span>
+        </div>
       </div>
-    </div>
-    <div class="monthly-estimate" aria-live="polite">
-      預估每月 <strong>${estimateMonthlyQty(selectedItem.weeklyQty ?? 0)}</strong> 單位
-      <span>（每週次數 × 約 4.5 週（大月））</span>
-    </div>
-    <div class="capacity-box">
-      <span class="capacity-title">目前額度還能增加</span>
-      <p class="capacity-hint approved-capacity-hint" data-code="${service.code}">${approvedCapacityMarkup(service)}</p>
-    </div>
-    <div class="weekday-editor">
-      <span class="weekday-label">服務星期</span>
-      <div class="weekday-chips" role="group" aria-label="${service.code} 服務星期">
-        ${WEEKDAYS.map(day => `
-          <button
-            type="button"
-            class="weekday-chip${(selectedItem.days || []).includes(day.key) ? ' active' : ''}"
-            data-day="${day.key}"
-            aria-pressed="${(selectedItem.days || []).includes(day.key)}"
-            title="${day.label}"
-          >${day.short}</button>
-        `).join('')}
+      <div class="monthly-estimate single-estimate" aria-live="polite">
+        本月直接計算 <strong>${singleQty}</strong> 單位
+        <span>（不乘 4.5 週）</span>
       </div>
-    </div>
+      <div class="capacity-box">
+        <span class="capacity-title">目前額度還能增加</span>
+        <p class="capacity-hint approved-capacity-hint" data-code="${service.code}">${approvedCapacityMarkup(service)}</p>
+      </div>
+    ` : `
+      <div class="weekly-row">
+        <span class="weekly-label">一週次數</span>
+        <div class="weekly-control">
+          <input class="weekly-input" type="number" inputmode="numeric" min="0" step="1" value="${selectedItem.weeklyQty ?? 0}" aria-label="${service.code} 一週服務次數" />
+          <span>次</span>
+        </div>
+      </div>
+      <div class="monthly-estimate" aria-live="polite">
+        預估每月 <strong>${estimateMonthlyQty(selectedItem.weeklyQty ?? 0)}</strong> 單位
+        <span>（每週次數 × 約 4.5 週（大月））</span>
+      </div>
+      <div class="capacity-box">
+        <span class="capacity-title">目前額度還能增加</span>
+        <p class="capacity-hint approved-capacity-hint" data-code="${service.code}">${approvedCapacityMarkup(service)}</p>
+      </div>
+      <div class="weekday-editor">
+        <span class="weekday-label">服務星期</span>
+        <div class="weekday-chips" role="group" aria-label="${service.code} 服務星期">
+          ${WEEKDAYS.map(day => `<button type="button" class="weekday-chip${(selectedItem.days || []).includes(day.key) ? ' active' : ''}" data-day="${day.key}" aria-pressed="${(selectedItem.days || []).includes(day.key)}" title="${day.label}">${day.short}</button>`).join('')}
+        </div>
+      </div>
+    `}
   `;
 
-  const weeklyInput = weeklyEditor.querySelector('.weekly-input');
-  weeklyInput.addEventListener('click', event => event.stopPropagation());
-  weeklyInput.addEventListener('input', event => updateWeeklyQty(service.code, event.target.value));
-  weeklyInput.addEventListener('change', event => updateWeeklyQty(service.code, event.target.value));
+  editor.querySelectorAll('.calc-mode-btn').forEach(modeButton => {
+    bindFastTap(modeButton, event => {
+      event.stopPropagation();
+      setCalculationMode(service.code, modeButton.dataset.mode);
+    });
+  });
 
-  weeklyEditor.querySelectorAll('.weekday-chip').forEach(dayButton => {
+  const weeklyInput = editor.querySelector('.weekly-input');
+  if (weeklyInput) {
+    weeklyInput.addEventListener('click', event => event.stopPropagation());
+    weeklyInput.addEventListener('input', event => updateWeeklyQty(service.code, event.target.value));
+    weeklyInput.addEventListener('change', event => updateWeeklyQty(service.code, event.target.value));
+  }
+
+  const singleInput = editor.querySelector('.single-input');
+  if (singleInput) {
+    singleInput.addEventListener('click', event => event.stopPropagation());
+    singleInput.addEventListener('input', event => updateSingleQty(service.code, event.target.value));
+    singleInput.addEventListener('change', event => updateSingleQty(service.code, event.target.value));
+  }
+
+  editor.querySelectorAll('.weekday-chip').forEach(dayButton => {
     bindFastTap(dayButton, event => {
       event.stopPropagation();
       const selected = toggleWeekday(service.code, dayButton.dataset.day);
@@ -683,7 +696,7 @@ function createWeeklyEditor(service, selectedItem) {
     });
   });
 
-  return weeklyEditor;
+  return editor;
 }
 
 function applyServiceCardState(card, service) {
@@ -761,7 +774,7 @@ function toggleService(code) {
 function addService(code) {
   if (state.items.some(item => item.code === code)) return;
 
-  state.items.push({ code, qty: 0, weeklyQty: 0, days: [] });
+  state.items.push({ code, qty: 0, weeklyQty: 0, singleQty: 1, days: [], calcMode: 'weekly' });
   saveState();
 
   // v11：只更新剛剛點選的服務卡，不再重畫整個服務清單。
@@ -780,10 +793,48 @@ function removeService(code) {
   scheduleDerivedRender();
 }
 
+function setCalculationMode(code, mode) {
+  const item = state.items.find(entry => entry.code === code);
+  if (!item || !['weekly', 'single'].includes(mode)) return;
+
+  item.calcMode = mode;
+  if (mode === 'single') {
+    if (getSingleQty(item) <= 0) item.singleQty = 1;
+    item.qty = getSingleQty(item);
+  } else {
+    item.qty = estimateMonthlyQty(item.weeklyQty);
+  }
+
+  saveState();
+  syncVisibleServiceCard(code);
+  scheduleDerivedRender();
+}
+
+function updateSingleQty(code, value) {
+  const item = state.items.find(entry => entry.code === code);
+  if (!item) return;
+
+  item.calcMode = 'single';
+  item.singleQty = Math.max(0, Math.floor(Number(value) || 0));
+  item.qty = item.singleQty;
+  saveState();
+
+  const input = Array.from(document.querySelectorAll('.single-input'))
+    .find(el => el.getAttribute('aria-label') === `${code} 本月單次數量`);
+  const estimate = input?.closest('.weekly-editor')?.querySelector('.single-estimate strong');
+  if (estimate) estimate.textContent = String(item.singleQty);
+
+  scheduleDerivedRender();
+}
+
 function updateQty(code, value) {
   const item = state.items.find(item => item.code === code);
   if (!item) return;
   item.qty = Math.max(0, Math.floor(Number(value) || 0));
+  if (getCalculationMode(item) === 'single') {
+    item.singleQty = item.qty;
+    syncVisibleServiceCard(code);
+  }
   saveState();
   renderApproved();
   renderTotals();
@@ -793,6 +844,7 @@ function updateWeeklyQty(code, value) {
   const item = state.items.find(item => item.code === code);
   if (!item) return;
 
+  item.calcMode = 'weekly';
   item.weeklyQty = Math.max(0, Math.floor(Number(value) || 0));
   item.qty = estimateMonthlyQty(item.weeklyQty);
   saveState();
@@ -825,6 +877,7 @@ function toggleWeekday(code, dayKey) {
   // v5：點選服務星期時，自動用「已選星期數」帶入一週次數。
   // 例如選一、三、五 => 3 次；選一～五 => 5 次。
   // 使用者之後仍可直接在「一週次數」欄位手動改成其他數字。
+  item.calcMode = 'weekly';
   item.weeklyQty = item.days.length;
   item.qty = estimateMonthlyQty(item.weeklyQty);
   saveState();
@@ -863,7 +916,12 @@ function renderApproved() {
     const service = getService(item.code);
     if (!service) return;
 
+    const isSingle = getCalculationMode(item) === 'single';
     const weekdaySummary = getWeekdaySummary(item.days || []);
+    const summaryText = isSingle
+      ? `單次計算｜本月 ${getSingleQty(item)} 單位`
+      : `每週 ${item.weeklyQty ?? 0} 次${weekdaySummary ? `｜${weekdaySummary}` : ''}｜預估每月 ${item.qty} 單位`;
+
     const wrapper = document.createElement('article');
     wrapper.className = 'approved-item';
     wrapper.innerHTML = `
@@ -871,19 +929,16 @@ function renderApproved() {
         <div>
           <div class="approved-code">${service.code}</div>
           <p class="approved-name">${service.name}</p>
-          <p class="approved-weekly">每週 ${item.weeklyQty ?? 0} 次${weekdaySummary ? `｜${weekdaySummary}` : ''}｜預估每月 ${item.qty} 單位</p>
+          <p class="approved-weekly">${summaryText}</p>
         </div>
         <button class="remove-button" type="button">移除</button>
       </div>
       <div class="approved-controls">
         <label class="qty-field">
-          <span>預估／核定月單位數</span>
+          <span>${isSingle ? '本月單次計算數量' : '預估／核定月單位數'}</span>
           <input class="qty-input" type="number" inputmode="numeric" min="0" step="1" value="${item.qty}" aria-label="${service.code} 核定單位數" />
         </label>
-        <div class="item-subtotal">
-          <span>小計</span>
-          <strong>${money.format(service.price * item.qty)} 元</strong>
-        </div>
+        <div class="item-subtotal"><span>小計</span><strong>${money.format(service.price * item.qty)} 元</strong></div>
       </div>
       <div class="capacity-box approved-capacity-box">
         <span class="capacity-title">目前額度還能增加</span>
